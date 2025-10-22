@@ -870,3 +870,422 @@ int main(int argc, char* argv[]) {
         fs::remove_file(&binary_path).ok();
     }
 }
+
+#[test]
+fn test_bisect5_solver() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_bisect5_solver: clang++ not available");
+        return;
+    }
+
+    let wgsl_source = r#"
+fn bisect5(
+    a: f32,
+    b: f32,
+    c: f32,
+    d: f32,
+    e: f32,
+    f: f32,
+    left: f32,
+    right: f32,
+) -> f32 {
+    let epsilon = 1e-6;
+    let mid1 = 0.5 * (left + right);
+    let left_value1 = (((((a * left + b) * left + c) * left + d) * left + e) * left + f);
+    let mid_value1 = (((((a * mid1 + b) * mid1 + c) * mid1 + d) * mid1 + e) * mid1 + f);
+    if (left_value1 * left_value1 < epsilon) {
+        return left;
+    }
+
+    if (mid_value1 * mid_value1 < epsilon) {
+        return mid1;
+    }
+
+    let product1 = left_value1 * mid_value1;
+
+    if (product1 > epsilon) {
+        let left2 = mid1;
+        let right2 = right;
+        let mid2 = 0.5 * (left2 + right2);
+        let left_value2 = (((((a * left2 + b) * left2 + c) * left2 + d) * left2 + e) * left2 + f);
+        let mid_value2 = (((((a * mid2 + b) * mid2 + c) * mid2 + d) * mid2 + e) * mid2 + f);
+        if (left_value2 * left_value2 < epsilon) {
+            return left2;
+        }
+
+        if (mid_value2 * mid_value2 < epsilon) {
+            return mid2;
+        }
+
+        let product2 = left_value2 * mid_value2;
+
+        if (product2 > epsilon) {
+            let left3 = mid2;
+            let right3 = right2;
+            let mid3 = 0.5 * (left3 + right3);
+            let left_value3 = (((((a * left3 + b) * left3 + c) * left3 + d) * left3 + e) * left3 + f);
+            let mid_value3 = (((((a * mid3 + b) * mid3 + c) * mid3 + d) * mid3 + e) * mid3 + f);
+            if (left_value3 * left_value3 < epsilon) {
+                return left3;
+            }
+
+            if (mid_value3 * mid_value3 < epsilon) {
+                return mid3;
+            }
+
+            let product3 = left_value3 * mid_value3;
+
+            if (product3 > epsilon) {
+                return 0.5 * (mid3 + right3);
+            }
+
+            return 0.5 * (left3 + mid3);
+        }
+
+        let left3 = left2;
+        let right3 = mid2;
+        let mid3 = 0.5 * (left3 + right3);
+        let left_value3 = (((((a * left3 + b) * left3 + c) * left3 + d) * left3 + e) * left3 + f);
+        let mid_value3 = (((((a * mid3 + b) * mid3 + c) * mid3 + d) * mid3 + e) * mid3 + f);
+        if (left_value3 * left_value3 < epsilon) {
+            return left3;
+        }
+
+        if (mid_value3 * mid_value3 < epsilon) {
+            return mid3;
+        }
+
+        let product3 = left_value3 * mid_value3;
+
+        if (product3 > epsilon) {
+            return 0.5 * (mid3 + right3);
+        }
+
+        return 0.5 * (left3 + mid3);
+    }
+
+    let left2 = left;
+    let right2 = mid1;
+    let mid2 = 0.5 * (left2 + right2);
+    let left_value2 = (((((a * left2 + b) * left2 + c) * left2 + d) * left2 + e) * left2 + f);
+    let mid_value2 = (((((a * mid2 + b) * mid2 + c) * mid2 + d) * mid2 + e) * mid2 + f);
+    if (left_value2 * left_value2 < epsilon) {
+        return left2;
+    }
+
+    if (mid_value2 * mid_value2 < epsilon) {
+        return mid2;
+    }
+
+    let product2 = left_value2 * mid_value2;
+
+    if (product2 > epsilon) {
+        let left3 = mid2;
+        let right3 = right2;
+        let mid3 = 0.5 * (left3 + right3);
+        let left_value3 = (((((a * left3 + b) * left3 + c) * left3 + d) * left3 + e) * left3 + f);
+        let mid_value3 = (((((a * mid3 + b) * mid3 + c) * mid3 + d) * mid3 + e) * mid3 + f);
+        if (left_value3 * left_value3 < epsilon) {
+            return left3;
+        }
+
+        if (mid_value3 * mid_value3 < epsilon) {
+            return mid3;
+        }
+
+        let product3 = left_value3 * mid_value3;
+
+        if (product3 > epsilon) {
+            return 0.5 * (mid3 + right3);
+        }
+
+        return 0.5 * (left3 + mid3);
+    }
+
+    let left3 = left2;
+    let right3 = mid2;
+    let mid3 = 0.5 * (left3 + right3);
+    let left_value3 = (((((a * left3 + b) * left3 + c) * left3 + d) * left3 + e) * left3 + f);
+    let mid_value3 = (((((a * mid3 + b) * mid3 + c) * mid3 + d) * mid3 + e) * mid3 + f);
+    if (left_value3 * left_value3 < epsilon) {
+        return left3;
+    }
+
+    if (mid_value3 * mid_value3 < epsilon) {
+        return mid3;
+    }
+
+    let product3 = left_value3 * mid_value3;
+
+    if (product3 > epsilon) {
+        return 0.5 * (mid3 + right3);
+    }
+
+    return 0.5 * (left3 + mid3);
+}
+
+@compute @workgroup_size(1)
+fn compute_main() {
+}
+"#;
+
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate bisect5 WGSL");
+
+    let wrapper = r#"
+
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <cmath>
+
+int main(int argc, char* argv[]) {
+    if (argc != 9) {
+        std::cerr << "Usage: " << argv[0]
+                  << " <a> <b> <c> <d> <e> <f> <left> <right>" << std::endl;
+        return 1;
+    }
+
+    float a = std::atof(argv[1]);
+    float b = std::atof(argv[2]);
+    float c = std::atof(argv[3]);
+    float d = std::atof(argv[4]);
+    float e = std::atof(argv[5]);
+    float f = std::atof(argv[6]);
+    float left = std::atof(argv[7]);
+    float right = std::atof(argv[8]);
+
+    float root = bisect5(a, b, c, d, e, f, left, right);
+
+    std::cout << std::fixed << std::setprecision(6) << root << std::endl;
+
+    return 0;
+}
+"#;
+
+    let full_cpp = format!(
+        "{cpp_code}{wrapper}",
+        cpp_code = cpp_code,
+        wrapper = wrapper
+    );
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_bisect5_solver_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&full_cpp, &binary_path, &runtime_header).expect("Failed to compile bisect5 C++");
+
+    struct TestCase {
+        coeffs: (f32, f32, f32, f32, f32, f32),
+        interval: (f32, f32),
+        description: &'static str,
+    }
+
+    let test_cases = vec![
+        TestCase {
+            coeffs: (1.0, 0.0, -3.0, 0.0, 2.0, -1.0),
+            interval: (1.0, 2.0),
+            description: "x^5 - 3x^3 + 2x - 1",
+        },
+        TestCase {
+            coeffs: (1.0, -2.0, 1.0, 0.0, -1.0, 0.0),
+            interval: (0.0, 2.0),
+            description: "Polynomial with root at x=1",
+        },
+        TestCase {
+            coeffs: (1.0, 0.0, 0.0, 0.0, 0.0, -2.0),
+            interval: (1.0, 2.0),
+            description: "x^5 - 2",
+        },
+    ];
+
+    fn eval_poly(coeffs: (f32, f32, f32, f32, f32, f32), x: f32) -> f32 {
+        let (a, b, c, d, e, f) = coeffs;
+        ((((a * x + b) * x + c) * x + d) * x + e) * x + f
+    }
+
+    fn bisect5_reference(coeffs: (f32, f32, f32, f32, f32, f32), left: f32, right: f32) -> f32 {
+        let epsilon = 1e-6f32;
+        let poly = |x: f32| eval_poly(coeffs, x);
+
+        let mid1 = 0.5 * (left + right);
+        let left_value1 = poly(left);
+        if left_value1 * left_value1 < epsilon {
+            return left;
+        }
+        let mid_value1 = poly(mid1);
+        if mid_value1 * mid_value1 < epsilon {
+            return mid1;
+        }
+        let product1 = left_value1 * mid_value1;
+
+        if product1 > epsilon {
+            let left2 = mid1;
+            let right2 = right;
+            let mid2 = 0.5 * (left2 + right2);
+            let left_value2 = poly(left2);
+            if left_value2 * left_value2 < epsilon {
+                return left2;
+            }
+            let mid_value2 = poly(mid2);
+            if mid_value2 * mid_value2 < epsilon {
+                return mid2;
+            }
+            let product2 = left_value2 * mid_value2;
+
+            if product2 > epsilon {
+                let left3 = mid2;
+                let right3 = right2;
+                let mid3 = 0.5 * (left3 + right3);
+                let left_value3 = poly(left3);
+                if left_value3 * left_value3 < epsilon {
+                    return left3;
+                }
+                let mid_value3 = poly(mid3);
+                if mid_value3 * mid_value3 < epsilon {
+                    return mid3;
+                }
+                let product3 = left_value3 * mid_value3;
+                if product3 > epsilon {
+                    return 0.5 * (mid3 + right3);
+                }
+                return 0.5 * (left3 + mid3);
+            }
+
+            let left3 = left2;
+            let right3 = mid2;
+            let mid3 = 0.5 * (left3 + right3);
+            let left_value3 = poly(left3);
+            if left_value3 * left_value3 < epsilon {
+                return left3;
+            }
+            let mid_value3 = poly(mid3);
+            if mid_value3 * mid_value3 < epsilon {
+                return mid3;
+            }
+            let product3 = left_value3 * mid_value3;
+            if product3 > epsilon {
+                return 0.5 * (mid3 + right3);
+            }
+            return 0.5 * (left3 + mid3);
+        }
+
+        let left2 = left;
+        let right2 = mid1;
+        let mid2 = 0.5 * (left2 + right2);
+        let left_value2 = poly(left2);
+        if left_value2 * left_value2 < epsilon {
+            return left2;
+        }
+        let mid_value2 = poly(mid2);
+        if mid_value2 * mid_value2 < epsilon {
+            return mid2;
+        }
+        let product2 = left_value2 * mid_value2;
+
+        if product2 > epsilon {
+            let left3 = mid2;
+            let right3 = right2;
+            let mid3 = 0.5 * (left3 + right3);
+            let left_value3 = poly(left3);
+            if left_value3 * left_value3 < epsilon {
+                return left3;
+            }
+            let mid_value3 = poly(mid3);
+            if mid_value3 * mid_value3 < epsilon {
+                return mid3;
+            }
+            let product3 = left_value3 * mid_value3;
+            if product3 > epsilon {
+                return 0.5 * (mid3 + right3);
+            }
+            return 0.5 * (left3 + mid3);
+        }
+
+        let left3 = left2;
+        let right3 = mid2;
+        let mid3 = 0.5 * (left3 + right3);
+        let left_value3 = poly(left3);
+        if left_value3 * left_value3 < epsilon {
+            return left3;
+        }
+        let mid_value3 = poly(mid3);
+        if mid_value3 * mid_value3 < epsilon {
+            return mid3;
+        }
+        let product3 = left_value3 * mid_value3;
+        if product3 > epsilon {
+            return 0.5 * (mid3 + right3);
+        }
+        0.5 * (left3 + mid3)
+    }
+
+    let tolerance = 1e-4f32;
+
+    for case in test_cases {
+        let (a, b, c, d, e, f_val) = case.coeffs;
+        let (left, right) = case.interval;
+
+        if is_debug_mode() {
+            eprintln!(
+                "[DEBUG] {}: coeffs=({}, {}, {}, {}, {}, {}), interval=({}, {})",
+                case.description, a, b, c, d, e, f_val, left, right
+            );
+        }
+
+        let output = Command::new(&binary_path)
+            .arg(a.to_string())
+            .arg(b.to_string())
+            .arg(c.to_string())
+            .arg(d.to_string())
+            .arg(e.to_string())
+            .arg(f_val.to_string())
+            .arg(left.to_string())
+            .arg(right.to_string())
+            .output()
+            .expect("Failed to execute bisect5 solver binary");
+
+        assert!(
+            output.status.success(),
+            "bisect5 solver execution failed for {}: {}",
+            case.description,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let result: f32 = stdout
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("Failed to parse result '{}'", stdout.trim()));
+
+        let expected = bisect5_reference(case.coeffs, left, right);
+        let poly_value = eval_poly(case.coeffs, result);
+        let expected_error = (result - expected).abs();
+
+        assert!(
+            expected_error < tolerance,
+            "{}: got {}, expected ~{} (error = {})",
+            case.description,
+            result,
+            expected,
+            expected_error
+        );
+
+        assert!(
+            poly_value.abs() < 0.5,
+            "{}: polynomial residual too large at root approximation: {}",
+            case.description,
+            poly_value
+        );
+
+        if is_debug_mode() {
+            eprintln!(
+                "[DEBUG] {} result: {}, residual: {}",
+                case.description, result, poly_value
+            );
+        }
+    }
+
+    if !is_debug_mode() {
+        fs::remove_file(&binary_path).ok();
+    }
+}
