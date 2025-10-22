@@ -432,14 +432,7 @@ int main() {{
     }
 }
 
-#[test]
-fn test_bezier_distance_accuracy() {
-    if !is_clang_available() {
-        eprintln!("Skipping test_bezier_distance_accuracy: clang++ not available");
-        return;
-    }
-
-    let wgsl_source = r#"
+const BEZIER_WGSL: &str = r#"
 struct Uniforms {
     resolution: vec2<f32>,
     p0: vec2<f32>,
@@ -686,7 +679,14 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate Bezier WGSL");
+#[test]
+fn test_bezier_distance_accuracy() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_bezier_distance_accuracy: clang++ not available");
+        return;
+    }
+
+    let cpp_code = translate_wgsl_to_cpp(BEZIER_WGSL).expect("Failed to translate Bezier WGSL");
 
     let bezier_name = cpp_code
         .lines()
@@ -786,6 +786,83 @@ int main() {{
             error
         );
     }
+
+    if !is_debug_mode() {
+        let _ = fs::remove_file(&binary_path);
+    }
+}
+#[test]
+fn test_bezier_shader_execution() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_bezier_shader_execution: clang++ not available");
+        return;
+    }
+
+    let cpp_code = translate_wgsl_to_cpp(BEZIER_WGSL).expect("Failed to translate Bezier WGSL");
+
+    let vs_name = "vs_main".to_string();
+    let fs_name = "fs_main".to_string();
+
+    let harness = format!(
+        r#"{cpp}
+
+#include <iostream>
+#include <cmath>
+
+int main() {{
+    uniforms.resolution = vec2<float>(2.0f, 2.0f);
+    uniforms.p0 = vec2<float>(0.0f, 0.0f);
+    uniforms.p1 = vec2<float>(0.0f, 0.5f);
+    uniforms.p2 = vec2<float>(0.5f, 0.0f);
+    uniforms.p3 = vec2<float>(1.0f, 1.0f);
+
+    vec4<float> v0 = {vs}(0u);
+    vec4<float> v1 = {vs}(1u);
+    vec4<float> v2 = {vs}(2u);
+
+    auto check_vertex = [](const vec4<float>& v, float x, float y) -> bool {{
+        return std::abs(v.x - x) < 1e-5f && std::abs(v.y - y) < 1e-5f && v.z == 0.0f && v.w == 1.0f;
+    }};
+
+    if (!check_vertex(v0, -1.0f, -1.0f)) return 1;
+    if (!check_vertex(v1, 3.0f, -1.0f)) return 2;
+    if (!check_vertex(v2, -1.0f, 3.0f)) return 3;
+
+    vec4<float> pos = vec4<float>(1.0f, 1.0f, 0.0f, 1.0f);
+    vec4<float> color = {fs}(pos);
+
+    auto finite_in_01 = [](float value) -> bool {{
+        return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+    }};
+
+    if (!finite_in_01(color.x) || !finite_in_01(color.y) || !finite_in_01(color.z) || !finite_in_01(color.w)) {{
+        return 4;
+    }}
+
+    return 0;
+}}
+"#,
+        cpp = cpp_code,
+        vs = vs_name,
+        fs = fs_name
+    );
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_bezier_shader_exec_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&harness, &binary_path, &runtime_header)
+        .expect("Failed to compile bezier shader execution C++");
+
+    let output = Command::new(&binary_path)
+        .output()
+        .expect("Failed to execute bezier shader execution binary");
+
+    assert!(
+        output.status.success(),
+        "bezier shader execution binary failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     if !is_debug_mode() {
         let _ = fs::remove_file(&binary_path);
