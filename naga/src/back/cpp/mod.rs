@@ -22,11 +22,11 @@ pub use writer::Writer;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Formatting error")]
+    #[error("C++ backend: Formatting error")]
     Format(#[from] core::fmt::Error),
-    #[error("Unsupported feature: {0}")]
+    #[error("C++ backend: Unsupported feature: {0}")]
     Unsupported(String),
-    #[error("Invalid shader stage: {0:?}")]
+    #[error("C++ backend: Invalid shader stage: {0:?}")]
     InvalidStage(crate::ShaderStage),
 }
 

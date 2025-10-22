@@ -940,6 +940,11 @@ impl<'a, W: Write> Writer<'a, W> {
                         self.write_expression_arena(arg, arena, func_info)?;
                         write!(self.out, ")")?;
                     }
+                    Mf::Sin => {
+                        write!(self.out, "std::sin(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
                     Mf::Cos => {
                         write!(self.out, "std::cos(")?;
                         self.write_expression_arena(arg, arena, func_info)?;
