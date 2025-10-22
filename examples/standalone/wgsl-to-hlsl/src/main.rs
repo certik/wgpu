@@ -30,11 +30,8 @@ fn main() -> anyhow::Result<()> {
 
     // Parse shader model and translate
     let shader_model = wgsl_to_hlsl::parse_shader_model(&args.shader_model)?;
-    let hlsl_output = wgsl_to_hlsl::translate_wgsl_to_hlsl_with_path(
-        &wgsl_source,
-        input_path,
-        shader_model,
-    )?;
+    let hlsl_output =
+        wgsl_to_hlsl::translate_wgsl_to_hlsl_with_path(&wgsl_source, input_path, shader_model)?;
 
     // Output the result
     match args.output {

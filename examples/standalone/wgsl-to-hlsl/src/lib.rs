@@ -6,9 +6,8 @@ pub fn translate_wgsl_to_hlsl(
     shader_model: naga::back::hlsl::ShaderModel,
 ) -> anyhow::Result<String> {
     // Parse WGSL
-    let module = naga::front::wgsl::parse_str(wgsl_source).map_err(|e| {
-        anyhow::anyhow!("Failed to parse WGSL:\n{}", e.emit_to_string(wgsl_source))
-    })?;
+    let module = naga::front::wgsl::parse_str(wgsl_source)
+        .map_err(|e| anyhow::anyhow!("Failed to parse WGSL:\n{}", e.emit_to_string(wgsl_source)))?;
 
     // Validate the module
     let info = naga::valid::Validator::new(

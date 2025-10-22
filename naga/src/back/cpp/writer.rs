@@ -1,7 +1,5 @@
 use super::{conv, BackendResult, Error, Options};
-use crate::{
-    proc, valid, Handle, Module, ShaderStage, TypeInner,
-};
+use crate::{proc, valid, Handle, Module, ShaderStage, TypeInner};
 use alloc::{
     format,
     string::{String, ToString},
@@ -72,7 +70,8 @@ impl<'a, W: Write> Writer<'a, W> {
                 TypeInner::Struct { ref members, .. } => {
                     writeln!(self.out, "struct {} {{", name)?;
                     for member in members {
-                        let member_name = member.name.as_ref().map(|s| s.as_str()).unwrap_or("_field");
+                        let member_name =
+                            member.name.as_ref().map(|s| s.as_str()).unwrap_or("_field");
                         write!(self.out, "    ")?;
                         self.write_type(&member.ty, &module.types)?;
                         writeln!(self.out, " {};", member_name)?;
@@ -106,7 +105,11 @@ impl<'a, W: Write> Writer<'a, W> {
                     conv::scalar_to_cpp_type(scalar)
                 )?;
             }
-            TypeInner::Matrix { columns, rows, scalar } => {
+            TypeInner::Matrix {
+                columns,
+                rows,
+                scalar,
+            } => {
                 let col_size = conv::vector_size_to_usize(columns);
                 let row_size = conv::vector_size_to_usize(rows);
                 write!(
@@ -183,7 +186,9 @@ impl<'a, W: Write> Writer<'a, W> {
         let module = self.module.unwrap();
 
         // Get function name
-        let func_name = func.name.as_ref()
+        let func_name = func
+            .name
+            .as_ref()
             .map(|s| s.as_str())
             .unwrap_or("unnamed_function");
 
@@ -226,11 +231,7 @@ impl<'a, W: Write> Writer<'a, W> {
         Ok(())
     }
 
-    fn write_entry_point(
-        &mut self,
-        ep: &'a crate::EntryPoint,
-        _index: usize,
-    ) -> BackendResult {
+    fn write_entry_point(&mut self, ep: &'a crate::EntryPoint, _index: usize) -> BackendResult {
         let _module = self.module.unwrap();
 
         // Only support compute shaders for now
@@ -272,7 +273,11 @@ impl<'a, W: Write> Writer<'a, W> {
             St::Block(ref block) => {
                 self.write_block(block, indent)?;
             }
-            St::If { condition, ref accept, ref reject } => {
+            St::If {
+                condition,
+                ref accept,
+                ref reject,
+            } => {
                 write!(self.out, "{}if (", indent_str)?;
                 self.write_expr_handle(condition)?;
                 writeln!(self.out, ") {{")?;
@@ -339,7 +344,9 @@ impl<'a, W: Write> Writer<'a, W> {
                 write!(self.out, "/* local */")?;
             }
             Ex::FunctionArgument(index) => {
-                let func = self.current_function.expect("No function context for FunctionArgument");
+                let func = self
+                    .current_function
+                    .expect("No function context for FunctionArgument");
                 if let Some(arg) = func.arguments.get(index as usize) {
                     if let Some(ref name) = arg.name {
                         write!(self.out, "{}", name)?;

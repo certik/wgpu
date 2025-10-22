@@ -463,3 +463,204 @@ int main(int argc, char* argv[]) {{
         fs::remove_file(&binary_path).ok();
     }
 }
+
+#[test]
+fn test_cubic_newton_step() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_cubic_newton_step: clang++ not available");
+        return;
+    }
+
+    let wgsl_source = r#"
+fn newton_step_cubic(a: f32, b: f32, c: f32, d: f32, x0: f32, lower: f32, upper: f32) -> f32 {
+    let fx = ((a * x0 + b) * x0 + c) * x0 + d;
+    let doubled_b = b + b;
+    let tripled_a = (a + a) + a;
+    let derivative = (tripled_a * x0 + doubled_b) * x0 + c;
+    let eps = 1e-6;
+    if (derivative < eps && derivative > -eps) {
+        return x0;
+    }
+
+    let next = x0 - fx / derivative;
+
+    if (next > upper) {
+        return upper;
+    }
+    if (next < lower) {
+        return lower;
+    }
+    return next;
+}
+
+@compute @workgroup_size(1)
+fn compute_main() {
+}
+"#;
+
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source)
+        .expect("Failed to translate cubic Newton step WGSL");
+
+    let wrapper = r#"
+
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <cmath>
+
+int main(int argc, char* argv[]) {
+    if (argc != 8) {
+        std::cerr << "Usage: " << argv[0] << " <a> <b> <c> <d> <x0> <lower> <upper>" << std::endl;
+        return 1;
+    }
+
+    float a = std::atof(argv[1]);
+    float b = std::atof(argv[2]);
+    float c = std::atof(argv[3]);
+    float d = std::atof(argv[4]);
+    float x0 = std::atof(argv[5]);
+    float lower = std::atof(argv[6]);
+    float upper = std::atof(argv[7]);
+
+    float next = newton_step_cubic(a, b, c, d, x0, lower, upper);
+
+    std::cout << std::fixed << std::setprecision(6) << next << std::endl;
+
+    return 0;
+}
+"#;
+
+    let full_cpp = format!("{cpp_code}{wrapper}", cpp_code = cpp_code, wrapper = wrapper);
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_cubic_newton_step_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&full_cpp, &binary_path, &runtime_header)
+        .expect("Failed to compile cubic Newton step C++");
+
+    struct TestCase {
+        coeffs: (f32, f32, f32, f32),
+        x0: f32,
+        bounds: (f32, f32),
+        description: &'static str,
+    }
+
+    let test_cases = vec![
+        TestCase {
+            coeffs: (1.0, -6.0, 11.0, -6.0),
+            x0: 1.5,
+            bounds: (-10.0, 10.0),
+            description: "Root near 1",
+        },
+        TestCase {
+            coeffs: (1.0, -6.0, 11.0, -6.0),
+            x0: 2.6,
+            bounds: (-10.0, 10.0),
+            description: "Root near 3",
+        },
+        TestCase {
+            coeffs: (1.0, 0.0, 0.0, -1.0),
+            x0: 0.0,
+            bounds: (-10.0, 10.0),
+            description: "Derivative near zero",
+        },
+        TestCase {
+            coeffs: (1.0, 0.0, 0.0, -1.0),
+            x0: 20.0,
+            bounds: (-10.0, 10.0),
+            description: "Clamp upper bound",
+        },
+        TestCase {
+            coeffs: (1.0, 0.0, 0.0, -1.0),
+            x0: -20.0,
+            bounds: (-10.0, 10.0),
+            description: "Clamp lower bound",
+        },
+    ];
+
+    fn expected_step(a: f32, b: f32, c: f32, d: f32, x0: f32, lower: f32, upper: f32) -> f32 {
+        let fx = ((a * x0 + b) * x0 + c) * x0 + d;
+        let doubled_b = b + b;
+        let tripled_a = (a + a) + a;
+        let derivative = (tripled_a * x0 + doubled_b) * x0 + c;
+        let eps = 1e-6f32;
+        if derivative < eps && derivative > -eps {
+            return x0;
+        }
+        let next = x0 - fx / derivative;
+        if next > upper {
+            return upper;
+        }
+        if next < lower {
+            return lower;
+        }
+        next
+    }
+
+    let tolerance = 1e-3f32;
+
+    for case in test_cases {
+        let (a, b, c, d) = case.coeffs;
+        let (lower, upper) = case.bounds;
+        let x0 = case.x0;
+        let expected = expected_step(a, b, c, d, x0, lower, upper);
+
+        if is_debug_mode() {
+            eprintln!(
+                "[DEBUG] {}: coefficients=({}, {}, {}, {}), x0={}, bounds=({}, {}), expected next={} ",
+                case.description,
+                a,
+                b,
+                c,
+                d,
+                x0,
+                lower,
+                upper,
+                expected
+            );
+        }
+
+        let output = Command::new(&binary_path)
+            .arg(a.to_string())
+            .arg(b.to_string())
+            .arg(c.to_string())
+            .arg(d.to_string())
+            .arg(x0.to_string())
+            .arg(lower.to_string())
+            .arg(upper.to_string())
+            .output()
+            .expect("Failed to execute cubic Newton step binary");
+
+        assert!(
+            output.status.success(),
+            "Cubic step execution failed for {}: {}",
+            case.description,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let result: f32 = stdout
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("Failed to parse result '{}'", stdout.trim()));
+
+        let error = (result - expected).abs();
+        assert!(
+            error < tolerance,
+            "{}: got {}, expected {} (error = {})",
+            case.description,
+            result,
+            expected,
+            error
+        );
+
+        if is_debug_mode() {
+            eprintln!("[DEBUG] Result: {} (error = {})", result, error);
+        }
+    }
+
+    if !is_debug_mode() {
+        fs::remove_file(&binary_path).ok();
+    }
+}

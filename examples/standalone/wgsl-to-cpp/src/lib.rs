@@ -96,9 +96,7 @@ pub fn compile_cpp(
     }
 
     // Compile with clang++
-    let output = Command::new("clang++")
-        .args(&args)
-        .output()?;
+    let output = Command::new("clang++").args(&args).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -107,7 +105,10 @@ pub fn compile_cpp(
 
     if debug_mode {
         eprintln!("[DEBUG] Binary compiled to: {}", output_path.display());
-        eprintln!("[DEBUG] To keep debugging, C++ source preserved at: {}", cpp_file.display());
+        eprintln!(
+            "[DEBUG] To keep debugging, C++ source preserved at: {}",
+            cpp_file.display()
+        );
     }
 
     Ok(())
