@@ -21,7 +21,12 @@ fn unique_test_id() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    format!("{}_{}_{}",counter, thread_id.replace("ThreadId(", "").replace(")", ""), timestamp)
+    format!(
+        "{}_{}_{}",
+        counter,
+        thread_id.replace("ThreadId(", "").replace(")", ""),
+        timestamp
+    )
 }
 
 /// Get the path to the runtime header for tests
@@ -32,10 +37,7 @@ fn get_runtime_header_path() -> PathBuf {
 
 /// Check if clang++ is available
 fn is_clang_available() -> bool {
-    Command::new("clang++")
-        .arg("--version")
-        .output()
-        .is_ok()
+    Command::new("clang++").arg("--version").output().is_ok()
 }
 
 #[test]
@@ -107,8 +109,7 @@ fn compute_shader() {
 "#;
 
     // Translate to C++
-    let cpp_code = translate_wgsl_to_cpp(wgsl_source)
-        .expect("Failed to translate WGSL");
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate WGSL");
 
     // Wrap with main() function
     let full_cpp = format!(
@@ -121,8 +122,7 @@ fn compute_shader() {
     let binary_path = temp_dir.join(format!("test_basic_shader_{}", unique_test_id()));
     let runtime_header = get_runtime_header_path();
 
-    compile_cpp(&full_cpp, &binary_path, &runtime_header)
-        .expect("Failed to compile C++");
+    compile_cpp(&full_cpp, &binary_path, &runtime_header).expect("Failed to compile C++");
 
     // Run the compiled binary
     if is_debug_mode() {
@@ -162,8 +162,7 @@ fn process() {
 "#;
 
     // Translate to C++
-    let cpp_code = translate_wgsl_to_cpp(wgsl_source)
-        .expect("Failed to translate WGSL");
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate WGSL");
 
     // Wrap with main() that prints output
     let full_cpp = format!(
@@ -177,8 +176,7 @@ fn process() {
     let binary_path = temp_dir.join(format!("test_shader_output_{}", unique_test_id()));
     let runtime_header = get_runtime_header_path();
 
-    compile_cpp(&full_cpp, &binary_path, &runtime_header)
-        .expect("Failed to compile C++");
+    compile_cpp(&full_cpp, &binary_path, &runtime_header).expect("Failed to compile C++");
 
     // Run and capture output
     if is_debug_mode() {
@@ -246,11 +244,7 @@ fn test_compile_multiple_shaders() {
             .output()
             .unwrap_or_else(|e| panic!("Shader {} failed to execute: {}", i, e));
 
-        assert!(
-            output.status.success(),
-            "Shader {} execution failed",
-            i
-        );
+        assert!(output.status.success(), "Shader {} execution failed", i);
 
         // Cleanup (skip in debug mode)
         if !is_debug_mode() {
@@ -335,7 +329,10 @@ fn main() {
             eprintln!("{}", cpp_code);
         }
         Err(e) => {
-            eprintln!("Translation failed (expected until backend is implemented): {}", e);
+            eprintln!(
+                "Translation failed (expected until backend is implemented): {}",
+                e
+            );
         }
     }
 }
@@ -366,8 +363,8 @@ fn compute_main() {
 "#;
 
     // Translate to C++
-    let cpp_code = translate_wgsl_to_cpp(wgsl_source)
-        .expect("Failed to translate linear solver WGSL");
+    let cpp_code =
+        translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate linear solver WGSL");
 
     // Wrap with main() that takes command line args and calls the WGSL function
     let full_cpp = format!(
@@ -409,15 +406,18 @@ int main(int argc, char* argv[]) {{
     // Test cases: (a, b, expected_solution)
     // Solution: x = -b/a
     let test_cases = vec![
-        (3.0, 6.0, -2.0),     // 3x + 6 = 0 → x = -6/3 = -2
-        (5.0, 10.0, -2.0),    // 5x + 10 = 0 → x = -10/5 = -2
-        (2.0, -4.0, 2.0),     // 2x - 4 = 0 → x = -(-4)/2 = 2
-        (-1.0, 3.0, 3.0),     // -x + 3 = 0 → x = -3/(-1) = 3
+        (3.0, 6.0, -2.0),  // 3x + 6 = 0 → x = -6/3 = -2
+        (5.0, 10.0, -2.0), // 5x + 10 = 0 → x = -10/5 = -2
+        (2.0, -4.0, 2.0),  // 2x - 4 = 0 → x = -(-4)/2 = 2
+        (-1.0, 3.0, 3.0),  // -x + 3 = 0 → x = -3/(-1) = 3
     ];
 
     for (a, b, expected) in test_cases {
         if is_debug_mode() {
-            eprintln!("[DEBUG] Testing: {}x + {} = 0, expected: {}", a, b, expected);
+            eprintln!(
+                "[DEBUG] Testing: {}x + {} = 0, expected: {}",
+                a, b, expected
+            );
         }
 
         let output = Command::new(&binary_path)
@@ -435,8 +435,14 @@ int main(int argc, char* argv[]) {{
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let result: f32 = stdout.trim().parse()
-            .unwrap_or_else(|_| panic!("Failed to parse result '{}' for a={}, b={}", stdout.trim(), a, b));
+        let result: f32 = stdout.trim().parse().unwrap_or_else(|_| {
+            panic!(
+                "Failed to parse result '{}' for a={}, b={}",
+                stdout.trim(),
+                a,
+                b
+            )
+        });
 
         let error = (result - expected).abs();
         assert!(
@@ -498,8 +504,8 @@ fn compute_main() {
 }
 "#;
 
-    let cpp_code = translate_wgsl_to_cpp(wgsl_source)
-        .expect("Failed to translate cubic Newton step WGSL");
+    let cpp_code =
+        translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate cubic Newton step WGSL");
 
     let wrapper = r#"
 
@@ -530,7 +536,11 @@ int main(int argc, char* argv[]) {
 }
 "#;
 
-    let full_cpp = format!("{cpp_code}{wrapper}", cpp_code = cpp_code, wrapper = wrapper);
+    let full_cpp = format!(
+        "{cpp_code}{wrapper}",
+        cpp_code = cpp_code,
+        wrapper = wrapper
+    );
 
     let temp_dir = std::env::temp_dir();
     let binary_path = temp_dir.join(format!("test_cubic_newton_step_{}", unique_test_id()));
@@ -635,6 +645,202 @@ int main(int argc, char* argv[]) {
         assert!(
             output.status.success(),
             "Cubic step execution failed for {}: {}",
+            case.description,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let result: f32 = stdout
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("Failed to parse result '{}'", stdout.trim()));
+
+        let error = (result - expected).abs();
+        assert!(
+            error < tolerance,
+            "{}: got {}, expected {} (error = {})",
+            case.description,
+            result,
+            expected,
+            error
+        );
+
+        if is_debug_mode() {
+            eprintln!("[DEBUG] Result: {} (error = {})", result, error);
+        }
+    }
+
+    if !is_debug_mode() {
+        fs::remove_file(&binary_path).ok();
+    }
+}
+
+#[test]
+fn test_bisect5_single_step() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_bisect5_single_step: clang++ not available");
+        return;
+    }
+
+    let wgsl_source = r#"
+fn bisect5_single_step(
+    a: f32,
+    b: f32,
+    c: f32,
+    d: f32,
+    e: f32,
+    f: f32,
+    left: f32,
+    right: f32,
+) -> f32 {
+    let epsilon = 1e-6;
+    let mid = 0.5 * (left + right);
+    let left_value = (((((a * left + b) * left + c) * left + d) * left + e) * left + f);
+    let mid_value = (((((a * mid + b) * mid + c) * mid + d) * mid + e) * mid + f);
+    let product = left_value * mid_value;
+
+    if (product * product < epsilon) {
+        return mid;
+    }
+
+    if (product > epsilon) {
+        return 0.5 * (mid + right);
+    }
+
+    return 0.5 * (left + mid);
+}
+
+@compute @workgroup_size(1)
+fn compute_main() {
+}
+"#;
+
+    let cpp_code =
+        translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate bisect5 single step WGSL");
+
+    let wrapper = r#"
+
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <cmath>
+
+int main(int argc, char* argv[]) {
+    if (argc != 9) {
+        std::cerr << "Usage: " << argv[0]
+                  << " <a> <b> <c> <d> <e> <f> <left> <right>" << std::endl;
+        return 1;
+    }
+
+    float a = std::atof(argv[1]);
+    float b = std::atof(argv[2]);
+    float c = std::atof(argv[3]);
+    float d = std::atof(argv[4]);
+    float e = std::atof(argv[5]);
+    float f = std::atof(argv[6]);
+    float left = std::atof(argv[7]);
+    float right = std::atof(argv[8]);
+
+    float mid = bisect5_single_step(a, b, c, d, e, f, left, right);
+
+    std::cout << std::fixed << std::setprecision(6) << mid << std::endl;
+
+    return 0;
+}
+"#;
+
+    let full_cpp = format!(
+        "{cpp_code}{wrapper}",
+        cpp_code = cpp_code,
+        wrapper = wrapper
+    );
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_bisect5_single_step_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&full_cpp, &binary_path, &runtime_header)
+        .expect("Failed to compile bisect5 single step C++");
+
+    struct TestCase {
+        coeffs: (f32, f32, f32, f32, f32, f32),
+        interval: (f32, f32),
+        description: &'static str,
+    }
+
+    let test_cases = vec![
+        TestCase {
+            coeffs: (1.0, 0.0, -3.0, 0.0, 2.0, -1.0),
+            interval: (0.0, 2.0),
+            description: "Primary root bracket",
+        },
+        TestCase {
+            coeffs: (1.0, -2.0, 0.0, -1.0, 0.0, 1.0),
+            interval: (-1.0, 1.0),
+            description: "Opposite signs across origin",
+        },
+        TestCase {
+            coeffs: (0.5, -1.0, 0.5, -0.5, 0.25, -0.01),
+            interval: (0.0, 1.0),
+            description: "Small coefficients",
+        },
+        TestCase {
+            coeffs: (1.0, 0.0, 0.0, 0.0, 0.0, -1.0),
+            interval: (0.0, 1.0),
+            description: "Midpoint is exact root",
+        },
+    ];
+
+    fn eval_poly(coeffs: (f32, f32, f32, f32, f32, f32), x: f32) -> f32 {
+        let (a, b, c, d, e, f) = coeffs;
+        ((((a * x + b) * x + c) * x + d) * x + e) * x + f
+    }
+
+    fn expected_mid(coeffs: (f32, f32, f32, f32, f32, f32), left: f32, right: f32) -> f32 {
+        let epsilon = 1e-6f32;
+        let mid = 0.5 * (left + right);
+        let f_left = eval_poly(coeffs, left);
+        let f_mid = eval_poly(coeffs, mid);
+        let product = f_left * f_mid;
+
+        if product * product < epsilon {
+            return mid;
+        }
+        if product > epsilon {
+            return 0.5 * (mid + right);
+        }
+        0.5 * (left + mid)
+    }
+
+    let tolerance = 1e-3f32;
+
+    for case in test_cases {
+        let (left, right) = case.interval;
+        let expected = expected_mid(case.coeffs, left, right);
+
+        if is_debug_mode() {
+            let (a, b, c, d, e, f_val) = case.coeffs;
+            eprintln!(
+                "[DEBUG] {}: coeffs=({}, {}, {}, {}, {}, {}), interval=({}, {}), expected mid={}",
+                case.description, a, b, c, d, e, f_val, left, right, expected
+            );
+        }
+
+        let output = Command::new(&binary_path)
+            .arg(case.coeffs.0.to_string())
+            .arg(case.coeffs.1.to_string())
+            .arg(case.coeffs.2.to_string())
+            .arg(case.coeffs.3.to_string())
+            .arg(case.coeffs.4.to_string())
+            .arg(case.coeffs.5.to_string())
+            .arg(left.to_string())
+            .arg(right.to_string())
+            .output()
+            .expect("Failed to execute bisect5 single step binary");
+
+        assert!(
+            output.status.success(),
+            "bisect5 single step execution failed for {}: {}",
             case.description,
             String::from_utf8_lossy(&output.stderr)
         );
