@@ -14,6 +14,7 @@ pub struct Writer<'a, W> {
     namer: proc::Namer,
     module: Option<&'a Module>,
     info: Option<&'a valid::ModuleInfo>,
+    current_function: Option<&'a crate::Function>,
 }
 
 impl<'a, W: Write> Writer<'a, W> {
@@ -24,6 +25,7 @@ impl<'a, W: Write> Writer<'a, W> {
             namer: proc::Namer::default(),
             module: None,
             info: None,
+            current_function: None,
         }
     }
 
@@ -60,7 +62,7 @@ impl<'a, W: Write> Writer<'a, W> {
 
     fn write_type_definition(
         &mut self,
-        handle: Handle<crate::Type>,
+        _handle: Handle<crate::Type>,
         ty: &crate::Type,
     ) -> BackendResult {
         let module = self.module.unwrap();
@@ -175,19 +177,61 @@ impl<'a, W: Write> Writer<'a, W> {
 
     fn write_function(
         &mut self,
-        _handle: Handle<crate::Function>,
-        _func: &crate::Function,
+        handle: Handle<crate::Function>,
+        func: &'a crate::Function,
     ) -> BackendResult {
-        // Skip regular functions for minimal implementation
+        let module = self.module.unwrap();
+
+        // Get function name
+        let func_name = func.name.as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("unnamed_function");
+
+        // Write return type
+        if let Some(ref result) = func.result {
+            self.write_type(&result.ty, &module.types)?;
+        } else {
+            write!(self.out, "void")?;
+        }
+
+        write!(self.out, " {}(", func_name)?;
+
+        // Write parameters
+        for (index, arg) in func.arguments.iter().enumerate() {
+            if index > 0 {
+                write!(self.out, ", ")?;
+            }
+            self.write_type(&arg.ty, &module.types)?;
+            write!(self.out, " ")?;
+            if let Some(ref name) = arg.name {
+                write!(self.out, "{}", name)?;
+            } else {
+                write!(self.out, "param{}", index)?;
+            }
+        }
+
+        writeln!(self.out, ") {{")?;
+
+        // Set current function context for expression handling
+        self.current_function = Some(func);
+
+        // Write function body
+        self.write_block(&func.body, 1)?;
+
+        // Clear function context
+        self.current_function = None;
+
+        writeln!(self.out, "}}")?;
+        writeln!(self.out)?;
         Ok(())
     }
 
     fn write_entry_point(
         &mut self,
-        ep: &crate::EntryPoint,
+        ep: &'a crate::EntryPoint,
         _index: usize,
     ) -> BackendResult {
-        let module = self.module.unwrap();
+        let _module = self.module.unwrap();
 
         // Only support compute shaders for now
         if ep.stage != ShaderStage::Compute {
@@ -197,8 +241,14 @@ impl<'a, W: Write> Writer<'a, W> {
         // Write function signature
         writeln!(self.out, "void {}() {{", ep.name)?;
 
+        // Set current function context
+        self.current_function = Some(&ep.function);
+
         // Write function body
         self.write_block(&ep.function.body, 1)?;
+
+        // Clear function context
+        self.current_function = None;
 
         writeln!(self.out, "}}")?;
         writeln!(self.out)?;
@@ -256,8 +306,9 @@ impl<'a, W: Write> Writer<'a, W> {
     }
 
     fn write_expr_handle(&mut self, handle: Handle<crate::Expression>) -> BackendResult {
-        let module = self.module.unwrap();
-        let expr = &module.entry_points[0].function.expressions[handle];
+        // Get expression from current function context
+        let func = self.current_function.expect("No function context set");
+        let expr = &func.expressions[handle];
         self.write_expression(expr, handle)
     }
 
@@ -286,6 +337,18 @@ impl<'a, W: Write> Writer<'a, W> {
             }
             Ex::LocalVariable(_) => {
                 write!(self.out, "/* local */")?;
+            }
+            Ex::FunctionArgument(index) => {
+                let func = self.current_function.expect("No function context for FunctionArgument");
+                if let Some(arg) = func.arguments.get(index as usize) {
+                    if let Some(ref name) = arg.name {
+                        write!(self.out, "{}", name)?;
+                    } else {
+                        write!(self.out, "param{}", index)?;
+                    }
+                } else {
+                    write!(self.out, "/* invalid arg {} */", index)?;
+                }
             }
             Ex::Binary { op, left, right } => {
                 write!(self.out, "(")?;

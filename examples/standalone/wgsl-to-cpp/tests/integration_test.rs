@@ -352,18 +352,16 @@ fn test_linear_equation_solver() {
     // Solve linear equation: ax + b = 0
     // Solution: x = -b/a
     //
-    // Test case: 3x + 6 = 0
-    // Expected solution: x = -6/3 = -2.0
-    //
-    // This test uses only inline arithmetic (division, negation) which the
-    // current C++ backend supports through Binary and Unary expressions.
+    // This test translates a WGSL function that solves linear equations
+    // and tests it with multiple coefficient pairs via command line arguments.
 
     let wgsl_source = r#"
+fn solve_linear(a: f32, b: f32) -> f32 {
+    return -b / a;
+}
+
 @compute @workgroup_size(1)
-fn solve_linear() {
-    // Solve: 3x + 6 = 0
-    // Solution: x = -b/a = -6.0/3.0
-    return;
+fn compute_main() {
 }
 "#;
 
@@ -371,40 +369,36 @@ fn solve_linear() {
     let cpp_code = translate_wgsl_to_cpp(wgsl_source)
         .expect("Failed to translate linear solver WGSL");
 
-    // Wrap with main() that computes and verifies the solution
+    // Wrap with main() that takes command line args and calls the WGSL function
     let full_cpp = format!(
         "{}
 
 #include <iostream>
+#include <cstdlib>
 #include <cmath>
 
-int main() {{
-    // Solve 3x + 6 = 0
-    // Expected: x = -2.0
-    float a = 3.0f;
-    float b = 6.0f;
-    float solution = -b / a;
-
-    std::cout << \"Solving: \" << a << \"x + \" << b << \" = 0\" << std::endl;
-    std::cout << \"Solution: x = \" << solution << std::endl;
-
-    // Verify the solution
-    float expected = -2.0f;
-    float error = std::abs(solution - expected);
-
-    if (error < 0.001f) {{
-        std::cout << \"PASS: Solution is correct (error = \" << error << \")\" << std::endl;
-        return 0;
-    }} else {{
-        std::cerr << \"FAIL: Solution is incorrect (error = \" << error << \")\" << std::endl;
+int main(int argc, char* argv[]) {{
+    if (argc != 3) {{
+        std::cerr << \"Usage: \" << argv[0] << \" <a> <b>\" << std::endl;
         return 1;
     }}
+
+    float a = std::atof(argv[1]);
+    float b = std::atof(argv[2]);
+
+    // Call the WGSL-generated function
+    float solution = solve_linear(a, b);
+
+    // Output in parseable format
+    std::cout << solution << std::endl;
+
+    return 0;
 }}
 ",
         cpp_code
     );
 
-    // Compile
+    // Compile once
     let temp_dir = std::env::temp_dir();
     let binary_path = temp_dir.join(format!("test_linear_solver_{}", unique_test_id()));
     let runtime_header = get_runtime_header_path();
@@ -412,30 +406,57 @@ int main() {{
     compile_cpp(&full_cpp, &binary_path, &runtime_header)
         .expect("Failed to compile linear solver C++");
 
-    // Run and capture output
-    if is_debug_mode() {
-        eprintln!("[DEBUG] Running binary: {}", binary_path.display());
+    // Test cases: (a, b, expected_solution)
+    // Solution: x = -b/a
+    let test_cases = vec![
+        (3.0, 6.0, -2.0),     // 3x + 6 = 0 → x = -6/3 = -2
+        (5.0, 10.0, -2.0),    // 5x + 10 = 0 → x = -10/5 = -2
+        (2.0, -4.0, 2.0),     // 2x - 4 = 0 → x = -(-4)/2 = 2
+        (-1.0, 3.0, 3.0),     // -x + 3 = 0 → x = -3/(-1) = 3
+    ];
+
+    for (a, b, expected) in test_cases {
+        if is_debug_mode() {
+            eprintln!("[DEBUG] Testing: {}x + {} = 0, expected: {}", a, b, expected);
+        }
+
+        let output = Command::new(&binary_path)
+            .arg(a.to_string())
+            .arg(b.to_string())
+            .output()
+            .expect("Failed to execute linear solver binary");
+
+        assert!(
+            output.status.success(),
+            "Linear solver failed for a={}, b={}: {}",
+            a,
+            b,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let result: f32 = stdout.trim().parse()
+            .unwrap_or_else(|_| panic!("Failed to parse result '{}' for a={}, b={}", stdout.trim(), a, b));
+
+        let error = (result - expected).abs();
+        assert!(
+            error < 0.001,
+            "Solution incorrect for {}x + {} = 0: got {}, expected {} (error = {})",
+            a,
+            b,
+            result,
+            expected,
+            error
+        );
+
+        if is_debug_mode() {
+            eprintln!("[DEBUG] Result: {} (error = {})", result, error);
+        }
     }
 
-    let output = Command::new(&binary_path)
-        .output()
-        .expect("Failed to execute linear solver binary");
-
-    // Verify execution
-    assert!(
-        output.status.success(),
-        "Linear solver execution failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Verify output contains expected solution
-    let stdout = String::from_utf8_lossy(&output.stdout);
     if is_debug_mode() {
-        eprintln!("[DEBUG] Binary output:\n{}", stdout);
+        eprintln!("[DEBUG] All test cases passed!");
     }
-
-    assert!(stdout.contains("Solution: x = -2"));
-    assert!(stdout.contains("PASS"));
 
     // Cleanup (skip in debug mode)
     if !is_debug_mode() {
