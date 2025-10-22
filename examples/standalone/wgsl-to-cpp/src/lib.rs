@@ -58,9 +58,16 @@ pub fn compile_cpp(
     output_path: &Path,
     runtime_header_path: &Path,
 ) -> anyhow::Result<()> {
-    // Write C++ to a temporary file
+    // Write C++ to a temporary file with unique name based on the output path
     let temp_dir = std::env::temp_dir();
-    let cpp_file = temp_dir.join("shader.cpp");
+    let cpp_filename = format!(
+        "shader_{}.cpp",
+        output_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("temp")
+    );
+    let cpp_file = temp_dir.join(cpp_filename);
     std::fs::write(&cpp_file, cpp_source)?;
 
     // Get the directory containing the runtime header
