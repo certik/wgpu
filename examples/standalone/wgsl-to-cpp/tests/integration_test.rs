@@ -663,7 +663,6 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) ve
     return vec4<f32>(positions[in_vertex_index], 0.0, 1.0);
 }
 
-/*
 @fragment
 fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let fragCoord = vec2<f32>(pos.x, uniforms.resolution.y - pos.y);
@@ -685,9 +684,6 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // Apply gamma correction
     return vec4<f32>(pow(o, vec3<f32>(1.0 / 2.2)), 1.0);
 }
-*/
-@compute @workgroup_size(1)
-fn compute_main() {}
 "#;
 
     let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate Bezier WGSL");

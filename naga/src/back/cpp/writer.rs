@@ -622,7 +622,34 @@ impl<'a, W: Write> Writer<'a, W> {
             }
             Ex::AccessIndex { base, index } => {
                 self.write_expression_arena(base, arena, func_info)?;
-                write!(self.out, "[{}]", index)?;
+
+                let module = self.module.unwrap();
+                let mut ty = self.resolve_expression_type(base, func_info);
+
+                loop {
+                    match *ty {
+                        TypeInner::Pointer { base: handle, .. } => {
+                            ty = &module.types[handle].inner;
+                        }
+                        TypeInner::ValuePointer { .. } => {
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+
+                match *ty {
+                    TypeInner::Struct { ref members, .. } => {
+                        let member_name = members
+                            .get(index as usize)
+                            .and_then(|m| m.name.as_deref())
+                            .unwrap_or("_field");
+                        write!(self.out, ".{}", member_name)?;
+                    }
+                    _ => {
+                        write!(self.out, "[{}]", index)?;
+                    }
+                }
             }
             Ex::Access { base, index } => {
                 self.write_expression_arena(base, arena, func_info)?;

@@ -141,6 +141,21 @@ vec4<T> operator/(const vec4<T>& a, T s) {
     return vec4<T>(a.x / s, a.y / s, a.z / s, a.w / s);
 }
 
+template<typename T>
+vec2<T> operator/(const vec2<T>& a, const vec2<T>& b) {
+    return vec2<T>(a.x / b.x, a.y / b.y);
+}
+
+template<typename T>
+vec3<T> operator/(const vec3<T>& a, const vec3<T>& b) {
+    return vec3<T>(a.x / b.x, a.y / b.y, a.z / b.z);
+}
+
+template<typename T>
+vec4<T> operator/(const vec4<T>& a, const vec4<T>& b) {
+    return vec4<T>(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);
+}
+
 // Matrix types (column-major like WGSL)
 template<typename T>
 struct mat2x2 {
