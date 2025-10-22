@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cmath>
-#include <array>
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 
 // Vector types
 template<typename T>
@@ -66,6 +67,21 @@ vec4<T> operator+(const vec4<T>& a, const vec4<T>& b) {
 }
 
 template<typename T>
+vec2<T> operator-(const vec2<T>& a, const vec2<T>& b) {
+    return vec2<T>(a.x - b.x, a.y - b.y);
+}
+
+template<typename T>
+vec3<T> operator-(const vec3<T>& a, const vec3<T>& b) {
+    return vec3<T>(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+template<typename T>
+vec4<T> operator-(const vec4<T>& a, const vec4<T>& b) {
+    return vec4<T>(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
+}
+
+template<typename T>
 vec2<T> operator*(const vec2<T>& a, T s) {
     return vec2<T>(a.x * s, a.y * s);
 }
@@ -78,6 +94,36 @@ vec3<T> operator*(const vec3<T>& a, T s) {
 template<typename T>
 vec4<T> operator*(const vec4<T>& a, T s) {
     return vec4<T>(a.x * s, a.y * s, a.z * s, a.w * s);
+}
+
+template<typename T>
+vec2<T> operator*(T s, const vec2<T>& a) {
+    return a * s;
+}
+
+template<typename T>
+vec3<T> operator*(T s, const vec3<T>& a) {
+    return a * s;
+}
+
+template<typename T>
+vec4<T> operator*(T s, const vec4<T>& a) {
+    return a * s;
+}
+
+template<typename T>
+vec2<T> operator/(const vec2<T>& a, T s) {
+    return vec2<T>(a.x / s, a.y / s);
+}
+
+template<typename T>
+vec3<T> operator/(const vec3<T>& a, T s) {
+    return vec3<T>(a.x / s, a.y / s, a.z / s);
+}
+
+template<typename T>
+vec4<T> operator/(const vec4<T>& a, T s) {
+    return vec4<T>(a.x / s, a.y / s, a.z / s, a.w / s);
 }
 
 // Matrix types (column-major like WGSL)
@@ -197,6 +243,116 @@ inline vec3<T> select(const vec3<T>& false_val, const vec3<T>& true_val, bool co
 template<typename T>
 inline vec4<T> select(const vec4<T>& false_val, const vec4<T>& true_val, bool cond) {
     return cond ? true_val : false_val;
+}
+
+// Additional helpers matching WGSL builtins
+
+template<typename T>
+inline T clamp(T x, T min_val, T max_val) {
+    return std::clamp(x, min_val, max_val);
+}
+
+template<typename T>
+inline vec2<T> clamp(const vec2<T>& x, const vec2<T>& min_val, const vec2<T>& max_val) {
+    return vec2<T>(
+        std::clamp(x.x, min_val.x, max_val.x),
+        std::clamp(x.y, min_val.y, max_val.y)
+    );
+}
+
+template<typename T>
+inline vec3<T> clamp(const vec3<T>& x, const vec3<T>& min_val, const vec3<T>& max_val) {
+    return vec3<T>(
+        std::clamp(x.x, min_val.x, max_val.x),
+        std::clamp(x.y, min_val.y, max_val.y),
+        std::clamp(x.z, min_val.z, max_val.z)
+    );
+}
+
+template<typename T>
+inline vec4<T> clamp(const vec4<T>& x, const vec4<T>& min_val, const vec4<T>& max_val) {
+    return vec4<T>(
+        std::clamp(x.x, min_val.x, max_val.x),
+        std::clamp(x.y, min_val.y, max_val.y),
+        std::clamp(x.z, min_val.z, max_val.z),
+        std::clamp(x.w, min_val.w, max_val.w)
+    );
+}
+
+template<typename T>
+inline T mix(const T& a, const T& b, const T& t) {
+    return a * (static_cast<T>(1) - t) + b * t;
+}
+
+template<typename T>
+inline vec2<T> mix(const vec2<T>& a, const vec2<T>& b, T t) {
+    return a * (static_cast<T>(1) - t) + b * t;
+}
+
+template<typename T>
+inline vec3<T> mix(const vec3<T>& a, const vec3<T>& b, T t) {
+    return a * (static_cast<T>(1) - t) + b * t;
+}
+
+template<typename T>
+inline vec4<T> mix(const vec4<T>& a, const vec4<T>& b, T t) {
+    return a * (static_cast<T>(1) - t) + b * t;
+}
+
+template<typename T>
+inline T smoothstep(T edge0, T edge1, T x) {
+    T t = clamp((x - edge0) / (edge1 - edge0), static_cast<T>(0), static_cast<T>(1));
+    return t * t * (static_cast<T>(3) - static_cast<T>(2) * t);
+}
+
+template<typename T>
+inline T dot(const vec2<T>& a, const vec2<T>& b) {
+    return a.x * b.x + a.y * b.y;
+}
+
+template<typename T>
+inline T dot(const vec3<T>& a, const vec3<T>& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+template<typename T>
+inline T dot(const vec4<T>& a, const vec4<T>& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+}
+
+template<typename T>
+inline T length(const vec2<T>& v) {
+    return static_cast<T>(std::sqrt(dot(v, v)));
+}
+
+template<typename T>
+inline T length(const vec3<T>& v) {
+    return static_cast<T>(std::sqrt(dot(v, v)));
+}
+
+template<typename T>
+inline T length(const vec4<T>& v) {
+    return static_cast<T>(std::sqrt(dot(v, v)));
+}
+
+inline vec3<float> pow(const vec3<float>& base, const vec3<float>& exp) {
+    return vec3<float>(
+        std::pow(base.x, exp.x),
+        std::pow(base.y, exp.y),
+        std::pow(base.z, exp.z)
+    );
+}
+
+inline float fwidth(float) {
+    return 0.0f;
+}
+
+template<typename Dest, typename Src>
+inline Dest bitcast(const Src& value) {
+    static_assert(sizeof(Dest) == sizeof(Src), "bitcast requires same size");
+    Dest result;
+    std::memcpy(&result, &value, sizeof(Dest));
+    return result;
 }
 
 // Component-wise select for vector conditions

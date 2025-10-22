@@ -1,7 +1,7 @@
 use super::{conv, keywords, BackendResult, Error, Options};
 use crate::{
     proc::{self, NameKey},
-    valid, Handle, Module, ShaderStage, TypeInner,
+    valid, Handle, Module, TypeInner,
 };
 use alloc::{
     format,
@@ -98,6 +98,16 @@ impl<'a, W: Write> Writer<'a, W> {
             .expect("identifier missing from namer")
     }
 
+    fn resolve_array_length(&self, size: &crate::ArraySize) -> Result<usize, Error> {
+        match *size {
+            crate::ArraySize::Constant(value) => Ok(value.get() as usize),
+            crate::ArraySize::Dynamic => Err(Error::Unsupported("dynamic arrays".to_string())),
+            crate::ArraySize::Pending(_) => {
+                Err(Error::Unsupported("pending array size".to_string()))
+            }
+        }
+    }
+
     fn write_constant(
         &mut self,
         handle: Handle<crate::Constant>,
@@ -180,18 +190,8 @@ impl<'a, W: Write> Writer<'a, W> {
                 write!(self.out, "std::array<")?;
                 self.write_type(&base, types)?;
                 write!(self.out, ", ")?;
-                match size {
-                    crate::ArraySize::Constant(_) => {
-                        // For now, just use a placeholder
-                        write!(self.out, "1")?;
-                    }
-                    crate::ArraySize::Dynamic => {
-                        return Err(Error::Unsupported("dynamic arrays".to_string()));
-                    }
-                    crate::ArraySize::Pending(_) => {
-                        return Err(Error::Unsupported("pending array size".to_string()));
-                    }
-                }
+                let length = self.resolve_array_length(&size)?;
+                write!(self.out, "{}", length)?;
                 write!(self.out, ">")?;
             }
             TypeInner::Struct { .. } => {
@@ -424,30 +424,41 @@ impl<'a, W: Write> Writer<'a, W> {
         Ok(())
     }
 
-    fn write_entry_point(&mut self, ep: &'a crate::EntryPoint, _index: usize) -> BackendResult {
-        let ep_index = _index as proc::EntryPointIndex;
+    fn write_entry_point(&mut self, ep: &'a crate::EntryPoint, index: usize) -> BackendResult {
+        let module = self.module.unwrap();
+        let ep_index = index as proc::EntryPointIndex;
 
-        // Only support compute shaders for now
-        if ep.stage != ShaderStage::Compute {
-            return Err(Error::InvalidStage(ep.stage));
+        let ep_name = self.name(NameKey::EntryPoint(ep_index)).to_string();
+
+        if let Some(ref result) = ep.function.result {
+            self.write_type(&result.ty, &module.types)?;
+        } else {
+            write!(self.out, "void")?;
         }
 
-        // Write function signature
-        let ep_name = self.name(NameKey::EntryPoint(ep_index)).to_string();
-        writeln!(self.out, "void {}() {{", ep_name)?;
+        write!(self.out, " {}(", ep_name)?;
 
-        // Set current function context
+        for (arg_index, arg) in ep.function.arguments.iter().enumerate() {
+            if arg_index > 0 {
+                write!(self.out, ", ")?;
+            }
+            self.write_type(&arg.ty, &module.types)?;
+            let arg_name = self
+                .name(NameKey::EntryPointArgument(ep_index, arg_index as u32))
+                .to_string();
+            write!(self.out, " {}", arg_name)?;
+        }
+
+        writeln!(self.out, ") {{")?;
+
         self.current_function = Some(&ep.function);
         self.current_function_kind = Some(FunctionKind::EntryPoint(ep_index));
         self.call_results.clear();
         self.temp_counter = 0;
 
         self.write_local_declarations(&ep.function, 1)?;
-
-        // Write function body
         self.write_block(&ep.function.body, 1)?;
 
-        // Clear function context
         self.current_function = None;
         self.current_function_kind = None;
 
@@ -619,6 +630,91 @@ impl<'a, W: Write> Writer<'a, W> {
                 self.write_expression_arena(index, arena, func_info)?;
                 write!(self.out, "]")?;
             }
+            Ex::Swizzle {
+                size,
+                vector,
+                pattern,
+            } => {
+                use crate::VectorSize;
+                let component_count = match size {
+                    VectorSize::Bi => 2,
+                    VectorSize::Tri => 3,
+                    VectorSize::Quad => 4,
+                };
+
+                if component_count == 1 {
+                    self.write_expression_arena(vector, arena, func_info)?;
+                    write!(
+                        self.out,
+                        ".{}",
+                        crate::back::COMPONENTS[pattern[0] as usize]
+                    )?;
+                } else {
+                    let ty = self.resolve_expression_type(handle, func_info);
+                    let scalar_type = match *ty {
+                        TypeInner::Vector { scalar, .. } => scalar,
+                        _ => {
+                            return Err(Error::Unsupported(
+                                "swizzle result is not a vector".to_string(),
+                            ));
+                        }
+                    };
+                    write!(
+                        self.out,
+                        "vec{}<{}>(",
+                        component_count,
+                        conv::scalar_to_cpp_type(scalar_type)
+                    )?;
+                    for i in 0..component_count {
+                        if i > 0 {
+                            write!(self.out, ", ")?;
+                        }
+                        self.write_expression_arena(vector, arena, func_info)?;
+                        let component = pattern[i] as usize;
+                        write!(self.out, ".{}", crate::back::COMPONENTS[component])?;
+                    }
+                    write!(self.out, ")")?;
+                }
+            }
+            Ex::Derivative { axis, expr, .. } => {
+                use crate::DerivativeAxis;
+                match axis {
+                    DerivativeAxis::Width => {
+                        write!(self.out, "fwidth(")?;
+                        self.write_expression_arena(expr, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    _ => {
+                        return Err(Error::Unsupported(
+                            "derivative axis not supported".to_string(),
+                        ));
+                    }
+                }
+            }
+            Ex::As {
+                expr,
+                kind,
+                convert,
+            } => {
+                let width = convert.unwrap_or(match kind {
+                    crate::ScalarKind::Sint
+                    | crate::ScalarKind::Uint
+                    | crate::ScalarKind::Float => 4,
+                    crate::ScalarKind::Bool => crate::BOOL_WIDTH,
+                    crate::ScalarKind::AbstractInt | crate::ScalarKind::AbstractFloat => 4,
+                });
+                let scalar = crate::Scalar { kind, width };
+                let cpp_type = conv::scalar_to_cpp_type(scalar);
+                if convert.is_some() {
+                    write!(self.out, "static_cast<{}>(", cpp_type)?;
+                    self.write_expression_arena(expr, arena, func_info)?;
+                    write!(self.out, ")")?;
+                } else {
+                    write!(self.out, "bitcast<{}>(", cpp_type)?;
+                    self.write_expression_arena(expr, arena, func_info)?;
+                    write!(self.out, ")")?;
+                }
+            }
             Ex::Load { pointer } => {
                 self.write_expression_arena(pointer, arena, func_info)?;
             }
@@ -626,18 +722,60 @@ impl<'a, W: Write> Writer<'a, W> {
                 let module = self.module.unwrap();
                 match module.types[ty].inner {
                     TypeInner::Vector { size, scalar } => {
+                        let total_components = conv::vector_size_to_usize(size);
+                        let mut written = 0usize;
                         write!(
                             self.out,
                             "vec{}<{}>(",
-                            conv::vector_size_to_usize(size),
+                            total_components,
                             conv::scalar_to_cpp_type(scalar)
                         )?;
-                        for (i, component) in components.iter().enumerate() {
-                            if i > 0 {
-                                write!(self.out, ", ")?;
+
+                        let mut first = true;
+                        for component in components {
+                            let component_type =
+                                self.resolve_expression_type(*component, func_info);
+                            match *component_type {
+                                TypeInner::Scalar(_) => {
+                                    if !first {
+                                        write!(self.out, ", ")?;
+                                    }
+                                    self.write_expression_arena(*component, arena, func_info)?;
+                                    written += 1;
+                                    first = false;
+                                }
+                                TypeInner::Vector {
+                                    size: inner_size, ..
+                                } => {
+                                    let inner_components = conv::vector_size_to_usize(inner_size);
+                                    for swizzle_index in 0..inner_components {
+                                        if !first {
+                                            write!(self.out, ", ")?;
+                                        }
+                                        self.write_expression_arena(*component, arena, func_info)?;
+                                        write!(
+                                            self.out,
+                                            ".{}",
+                                            crate::back::COMPONENTS[swizzle_index]
+                                        )?;
+                                        written += 1;
+                                        first = false;
+                                    }
+                                }
+                                _ => {
+                                    return Err(Error::Unsupported(
+                                        "unsupported vector constructor component".to_string(),
+                                    ));
+                                }
                             }
-                            self.write_expression_arena(*component, arena, func_info)?;
                         }
+
+                        if written != total_components {
+                            return Err(Error::Unsupported(
+                                "vector constructor component count mismatch".to_string(),
+                            ));
+                        }
+
                         write!(self.out, ")")?;
                     }
                     TypeInner::Scalar(_) => {
@@ -646,6 +784,19 @@ impl<'a, W: Write> Writer<'a, W> {
                         } else {
                             write!(self.out, "0")?;
                         }
+                    }
+                    TypeInner::Array { base, ref size, .. } => {
+                        let length = self.resolve_array_length(size)?;
+                        write!(self.out, "std::array<")?;
+                        self.write_type(&base, &module.types)?;
+                        write!(self.out, ", {}>{{", length)?;
+                        for (index, component) in components.iter().enumerate() {
+                            if index > 0 {
+                                write!(self.out, ", ")?;
+                            }
+                            self.write_expression_arena(*component, arena, func_info)?;
+                        }
+                        write!(self.out, "}}")?;
                     }
                     _ => {
                         return Err(Error::Unsupported(
@@ -683,7 +834,13 @@ impl<'a, W: Write> Writer<'a, W> {
                 self.write_expression_arena(condition, arena, func_info)?;
                 write!(self.out, ")")?;
             }
-            Ex::Math { fun, arg, .. } => {
+            Ex::Math {
+                fun,
+                arg,
+                arg1,
+                arg2,
+                ..
+            } => {
                 use crate::MathFunction as Mf;
                 match fun {
                     Mf::Abs => {
@@ -703,6 +860,90 @@ impl<'a, W: Write> Writer<'a, W> {
                                 return Err(Error::Unsupported("abs for this type".to_string()));
                             }
                         }
+                    }
+                    Mf::Length => {
+                        write!(self.out, "length(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Dot => {
+                        let other = arg1.expect("dot requires second argument");
+                        write!(self.out, "dot(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(other, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Clamp => {
+                        let min_val = arg1.expect("clamp missing min");
+                        let max_val = arg2.expect("clamp missing max");
+                        write!(self.out, "clamp(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(min_val, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(max_val, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Mix => {
+                        let value_b = arg1.expect("mix missing second argument");
+                        let factor = arg2.expect("mix missing factor");
+                        write!(self.out, "mix(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(value_b, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(factor, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::SmoothStep => {
+                        let edge0 = arg1.expect("smoothstep missing edge0");
+                        let edge1 = arg2.expect("smoothstep missing edge1");
+                        write!(self.out, "smoothstep(")?;
+                        self.write_expression_arena(edge0, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(edge1, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Sqrt => {
+                        write!(self.out, "std::sqrt(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Cos => {
+                        write!(self.out, "std::cos(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Pow => {
+                        let exponent = arg1.expect("pow missing exponent");
+                        let result_ty = self.resolve_expression_type(handle, func_info);
+                        match *result_ty {
+                            TypeInner::Scalar(_) => write!(self.out, "std::pow(")?,
+                            _ => write!(self.out, "pow(")?,
+                        }
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(exponent, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Max => {
+                        let rhs = arg1.expect("max missing argument");
+                        write!(self.out, "std::max(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(rhs, arena, func_info)?;
+                        write!(self.out, ")")?;
+                    }
+                    Mf::Min => {
+                        let rhs = arg1.expect("min missing argument");
+                        write!(self.out, "std::min(")?;
+                        self.write_expression_arena(arg, arena, func_info)?;
+                        write!(self.out, ", ")?;
+                        self.write_expression_arena(rhs, arena, func_info)?;
+                        write!(self.out, ")")?;
                     }
                     _ => {
                         return Err(Error::Unsupported(format!(
