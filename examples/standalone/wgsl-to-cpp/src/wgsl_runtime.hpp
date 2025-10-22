@@ -156,3 +156,73 @@ struct mat3x4 {
     vec4<T>& operator[](size_t i) { return cols[i]; }
     const vec4<T>& operator[](size_t i) const { return cols[i]; }
 };
+
+// WGSL builtin functions
+
+// abs() - absolute value for vectors
+// Note: For scalar abs(), std::abs() is used directly (already available in <cmath>)
+template<typename T>
+inline vec2<T> abs(const vec2<T>& v) {
+    return vec2<T>(std::abs(v.x), std::abs(v.y));
+}
+
+template<typename T>
+inline vec3<T> abs(const vec3<T>& v) {
+    return vec3<T>(std::abs(v.x), std::abs(v.y), std::abs(v.z));
+}
+
+template<typename T>
+inline vec4<T> abs(const vec4<T>& v) {
+    return vec4<T>(std::abs(v.x), std::abs(v.y), std::abs(v.z), std::abs(v.w));
+}
+
+// select() - ternary conditional: select(false_value, true_value, condition)
+// In WGSL: select(a, b, cond) returns b if cond is true, otherwise a
+template<typename T>
+inline T select(const T& false_val, const T& true_val, bool cond) {
+    return cond ? true_val : false_val;
+}
+
+// Vector variants
+template<typename T>
+inline vec2<T> select(const vec2<T>& false_val, const vec2<T>& true_val, bool cond) {
+    return cond ? true_val : false_val;
+}
+
+template<typename T>
+inline vec3<T> select(const vec3<T>& false_val, const vec3<T>& true_val, bool cond) {
+    return cond ? true_val : false_val;
+}
+
+template<typename T>
+inline vec4<T> select(const vec4<T>& false_val, const vec4<T>& true_val, bool cond) {
+    return cond ? true_val : false_val;
+}
+
+// Component-wise select for vector conditions
+template<typename T>
+inline vec2<T> select(const vec2<T>& false_val, const vec2<T>& true_val, const vec2<bool>& cond) {
+    return vec2<T>(
+        cond.x ? true_val.x : false_val.x,
+        cond.y ? true_val.y : false_val.y
+    );
+}
+
+template<typename T>
+inline vec3<T> select(const vec3<T>& false_val, const vec3<T>& true_val, const vec3<bool>& cond) {
+    return vec3<T>(
+        cond.x ? true_val.x : false_val.x,
+        cond.y ? true_val.y : false_val.y,
+        cond.z ? true_val.z : false_val.z
+    );
+}
+
+template<typename T>
+inline vec4<T> select(const vec4<T>& false_val, const vec4<T>& true_val, const vec4<bool>& cond) {
+    return vec4<T>(
+        cond.x ? true_val.x : false_val.x,
+        cond.y ? true_val.y : false_val.y,
+        cond.z ? true_val.z : false_val.z,
+        cond.w ? true_val.w : false_val.w
+    );
+}
