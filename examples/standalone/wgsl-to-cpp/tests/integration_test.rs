@@ -254,28 +254,12 @@ fn test_compile_multiple_shaders() {
 }
 
 #[test]
-#[ignore] // Disabled until C++ backend supports functions, loops, variables, and function calls
 fn test_bisect5_newton_method() {
-    // This test demonstrates a complex Newton-Raphson bisection method for finding
-    // roots of a 5th degree polynomial. It's currently disabled because the C++ backend
-    // doesn't yet support the required WGSL features.
-    //
-    // MISSING FEATURES NEEDED:
-    // 1. Regular function definitions (not just entry points)
-    // 2. Function parameters and return types
-    // 3. Local variable declarations (var statements)
-    // 4. For loops
-    // 5. Function calls
-    // 6. Load expressions (reading from variables)
-    // 7. Module-level constants
-    // 8. select() and abs() builtin functions (added to runtime, but not callable yet)
-    //
-    // MATHEMATICAL BACKGROUND:
-    // Solves: x^5 - 3x^3 + 2x - 1 = 0
-    // Using Newton-Raphson method with bisection for interval refinement
-    // Expected root in [0, 1]: x ≈ 0.656
-    //
-    // WGSL CODE:
+    if !is_clang_available() {
+        eprintln!("Skipping test_bisect5_newton_method: clang++ not available");
+        return;
+    }
+
     let wgsl_source = r#"
 const eps: f32 = 1e-6;
 
@@ -317,23 +301,134 @@ fn main() {
 }
 "#;
 
-    // Translation will work (naga can parse it), but the C++ backend will generate
-    // placeholder comments for unsupported features
-    let result = translate_wgsl_to_cpp(wgsl_source);
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate bisect5 WGSL");
 
-    // For now, just verify it doesn't crash during translation
-    // The generated C++ won't be valid/compilable until backend is extended
-    match result {
-        Ok(cpp_code) => {
-            eprintln!("Translation succeeded, but generated C++ contains unsupported feature placeholders:");
-            eprintln!("{}", cpp_code);
+    assert!(
+        !cpp_code.contains("/* expr */") && !cpp_code.contains("// Unsupported statement"),
+        "Generated C++ still contains unsupported placeholders:\n{}",
+        cpp_code
+    );
+
+    let bisect_function_name = cpp_code
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("float ") {
+                Some(rest.split('(').next().unwrap_or("").trim().to_string())
+            } else {
+                None
+            }
+        })
+        .expect("bisect5 function not found in generated C++");
+
+    let renamed_cpp = cpp_code.replacen("void main()", "void shader_main()", 1);
+
+    let harness_cpp = format!(
+        "{original}
+
+#include <iostream>
+#include <iomanip>
+
+int main() {{
+    shader_main();
+    float root = {fn_name}(1.0f, 0.0f, -3.0f, 0.0f, 2.0f, -1.0f, vec2<float>(0.0f, 1.0f), vec2<float>(0.0f, 1.0f));
+    std::cout << std::fixed << std::setprecision(6) << root << std::endl;
+    return 0;
+}}
+",
+        original = renamed_cpp,
+        fn_name = bisect_function_name
+    );
+
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Generated bisect5 C++:\n{}", harness_cpp);
+    }
+
+    fn reference_bisect5(
+        a: f32,
+        b: f32,
+        c: f32,
+        d: f32,
+        e: f32,
+        f: f32,
+        t0: f32,
+        t1: f32,
+        v0: f32,
+        v1: f32,
+    ) -> f32 {
+        let mut lower = t0;
+        let mut upper = t1;
+        let mut x = 0.5 * (lower + upper);
+        let s = if v0 < v1 { 1.0 } else { -1.0 };
+        let eps = 1e-6f32;
+
+        for _ in 0..32 {
+            let mut y = a * x + b;
+            let mut q = a * x + y;
+            y = y * x + c;
+            q = q * x + y;
+            y = y * x + d;
+            q = q * x + y;
+            y = y * x + e;
+            q = q * x + y;
+            y = y * x + f;
+
+            if s * y < 0.0 {
+                lower = x;
+            } else {
+                upper = x;
+            }
+
+            let mut next = x - y / q;
+            if !(next >= lower && next <= upper) {
+                next = 0.5 * (lower + upper);
+            }
+
+            if (next - x).abs() < eps {
+                return next;
+            }
+
+            x = next;
         }
-        Err(e) => {
-            eprintln!(
-                "Translation failed (expected until backend is implemented): {}",
-                e
-            );
-        }
+
+        x
+    }
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_bisect5_full_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&harness_cpp, &binary_path, &runtime_header)
+        .expect("Failed to compile bisect5 C++");
+
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Running bisect5 binary: {}", binary_path.display());
+    }
+
+    let output = Command::new(&binary_path)
+        .output()
+        .expect("Failed to execute bisect5 binary");
+
+    assert!(
+        output.status.success(),
+        "bisect5 execution failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let root: f32 = stdout.trim().parse().expect("Failed to parse bisect5 root");
+    let expected = reference_bisect5(1.0, 0.0, -3.0, 0.0, 2.0, -1.0, 0.0, 1.0, 0.0, 1.0);
+    let error = (root - expected).abs();
+    assert!(
+        error < 0.001,
+        "bisect5 root inaccurate: got {}, expected {} (error = {})",
+        root,
+        expected,
+        error
+    );
+
+    if !is_debug_mode() {
+        let _ = fs::remove_file(&binary_path);
     }
 }
 
@@ -1031,7 +1126,27 @@ fn compute_main() {
 
     let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate bisect5 WGSL");
 
-    let wrapper = r#"
+    assert!(
+        !cpp_code.contains("/* expr */") && !cpp_code.contains("// Unsupported statement"),
+        "Generated C++ still contains unsupported placeholders:\n{}",
+        cpp_code
+    );
+
+    let bisect_function_name = cpp_code
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("float ") {
+                let name = rest.split('(').next()?.trim();
+                if name.starts_with("bisect5") {
+                    return Some(name.to_string());
+                }
+            }
+            None
+        })
+        .expect("bisect5 function not found in generated C++");
+
+    let wrapper_template = r#"
 
 #include <iostream>
 #include <iomanip>
@@ -1054,13 +1169,15 @@ int main(int argc, char* argv[]) {
     float left = std::atof(argv[7]);
     float right = std::atof(argv[8]);
 
-    float root = bisect5(a, b, c, d, e, f, left, right);
+    float root = __B5_FN__(a, b, c, d, e, f, left, right);
 
     std::cout << std::fixed << std::setprecision(6) << root << std::endl;
 
     return 0;
 }
 "#;
+
+    let wrapper = wrapper_template.replace("__B5_FN__", &bisect_function_name);
 
     let full_cpp = format!(
         "{cpp_code}{wrapper}",

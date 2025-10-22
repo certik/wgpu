@@ -1,3 +1,6 @@
+use crate::proc::{CaseInsensitiveKeywordSet, KeywordSet};
+use crate::racy_lock::RacyLock;
+
 /// C++ reserved keywords and identifiers that cannot be used as variable names
 pub const RESERVED_KEYWORDS: &[&str] = &[
     // C++ keywords
@@ -121,3 +124,14 @@ pub const RESERVED_KEYWORDS: &[&str] = &[
     "int32_t",
     "int64_t",
 ];
+
+/// The above keywords as a cached case-sensitive set.
+pub static RESERVED_SET: RacyLock<KeywordSet> =
+    RacyLock::new(|| KeywordSet::from_iter(RESERVED_KEYWORDS.iter().copied()));
+
+/// The above keywords as a cached case-insensitive set.
+pub static RESERVED_CASE_INSENSITIVE_SET: RacyLock<CaseInsensitiveKeywordSet> =
+    RacyLock::new(|| CaseInsensitiveKeywordSet::from_iter(RESERVED_KEYWORDS.iter().copied()));
+
+/// Prefixes we avoid when generating identifiers.
+pub const RESERVED_PREFIXES: &[&str] = &["_naga"];
