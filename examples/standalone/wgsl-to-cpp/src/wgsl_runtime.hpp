@@ -82,6 +82,21 @@ vec4<T> operator-(const vec4<T>& a, const vec4<T>& b) {
 }
 
 template<typename T>
+vec2<T> operator-(const vec2<T>& v) {
+    return vec2<T>(-v.x, -v.y);
+}
+
+template<typename T>
+vec3<T> operator-(const vec3<T>& v) {
+    return vec3<T>(-v.x, -v.y, -v.z);
+}
+
+template<typename T>
+vec4<T> operator-(const vec4<T>& v) {
+    return vec4<T>(-v.x, -v.y, -v.z, -v.w);
+}
+
+template<typename T>
 vec2<T> operator*(const vec2<T>& a, T s) {
     return vec2<T>(a.x * s, a.y * s);
 }

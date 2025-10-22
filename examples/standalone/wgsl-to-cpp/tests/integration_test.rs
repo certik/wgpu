@@ -692,6 +692,264 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 
 #[test]
+fn test_bezier_distance_accuracy() {
+    if !is_clang_available() {
+        eprintln!("Skipping test_bezier_distance_accuracy: clang++ not available");
+        return;
+    }
+
+    let wgsl_source = r#"
+const eps: f32 = 0.0001;
+
+fn wg_isfinite(x: f32) -> bool {
+    return (bitcast<u32>(x) & 0x7f800000u) != 0x7f800000u;
+}
+
+fn poly5(a: f32, b: f32, c: f32, d: f32, e: f32, f: f32, t: f32) -> f32 {
+    return ((((a * t + b) * t + c) * t + d) * t + e) * t + f;
+}
+
+fn bisect5(a: f32, b: f32, c: f32, d: f32, e: f32, f: f32, t_in: vec2<f32>, v: vec2<f32>) -> f32 {
+    var t = t_in;
+    var x = (t.x + t.y) * 0.5;
+    let s = select(-1.0, 1.0, v.x < v.y);
+
+    for (var i = 0; i < 32; i++) {
+        var y = a * x + b;
+        var q = a * x + y;
+        y = y * x + c;
+        q = q * x + y;
+        y = y * x + d;
+        q = q * x + y;
+        y = y * x + e;
+        q = q * x + y;
+        y = y * x + f;
+
+        t = select(vec2(t.x, x), vec2(x, t.y), s * y < 0.0);
+        var next = x - y / q;
+        next = select((t.x + t.y) * 0.5, next, next >= t.x && next <= t.y);
+        if (abs(next - x) < eps) {
+            return next;
+        }
+        x = next;
+    }
+    return x;
+}
+
+fn root_find2(a: f32, b: f32, c: f32) -> array<f32, 6> {
+    var result: array<f32, 6>;
+    result[5] = 0.0;
+
+    let disc = b * b - 4.0 * a * c;
+    if (disc < 0.0) {
+        return result;
+    }
+    if (disc == 0.0) {
+        let s = -0.5 * b / a;
+        if (wg_isfinite(s)) {
+            result[0] = s;
+            result[5] = 1.0;
+        }
+        return result;
+    }
+
+    let h = sqrt(disc);
+    let q = -0.5 * (b + select(-h, h, b > 0.0));
+    var v = vec2(q / a, c / q);
+    if (v.x > v.y) {
+        v = v.yx;
+    }
+
+    var count = 0u;
+    if (wg_isfinite(v.x) && v.x >= 0.0 && v.x <= 1.0) {
+        result[count] = v.x;
+        count++;
+    }
+    if (wg_isfinite(v.y) && v.y >= 0.0 && v.y <= 1.0) {
+        result[count] = v.y;
+        count++;
+    }
+    result[5] = f32(count);
+    return result;
+}
+
+fn cy_find5(r4: array<f32, 6>, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) -> array<f32, 6> {
+    var result: array<f32, 6>;
+    var count = 0u;
+    let n = i32(r4[5]);
+
+    var px = 0.0;
+    var py = poly5(a, b, c, d, e, f, 0.0);
+
+    for (var i = 0; i <= n; i++) {
+        let x = select(r4[i], 1.0, i == n);
+        let y = poly5(a, b, c, d, e, f, x);
+
+        if (py * y <= 0.0 && !(py * y == 0.0)) {
+            let v = bisect5(a, b, c, d, e, f, vec2(px, x), vec2(py, y));
+            result[count] = v;
+            count++;
+        }
+        px = x;
+        py = y;
+    }
+
+    result[5] = f32(count);
+    return result;
+}
+
+fn root_find5(da: f32, db: f32, dc: f32, dd: f32, de: f32, df: f32) -> array<f32, 6> {
+    let r2 = root_find2(10.0 * da, 4.0 * db, dc);
+    let r3 = cy_find5(r2, 0.0, 0.0, 10.0 * da, 6.0 * db, 3.0 * dc, dd);
+    let r4 = cy_find5(r3, 0.0, 5.0 * da, 4.0 * db, 3.0 * dc, dd + dd, de);
+    return cy_find5(r4, da, db, dc, dd, de, df);
+}
+
+fn dot2(v: vec2<f32>) -> f32 {
+    return dot(v, v);
+}
+
+fn bezier(p: vec2<f32>, p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>) -> f32 {
+    let dp0 = p0 - p;
+    let dp3 = p3 - p;
+    var dist = min(dot2(dp0), dot2(dp3));
+
+    let a = -p0 + 3.0 * (p1 - p2) + p3;
+    let b = 3.0 * (p0 - 2.0 * p1 + p2);
+    let c = 3.0 * (p1 - p0);
+    let d = p0;
+
+    let dmp = d - p;
+    let da = 3.0 * dot(a, a);
+    let db = 5.0 * dot(a, b);
+    let dc = 4.0 * dot(a, c) + 2.0 * dot(b, b);
+    let dd = 3.0 * (dot(a, dmp) + dot(b, c));
+    let de = 2.0 * dot(b, dmp) + dot(c, c);
+    let df = dot(c, dmp);
+
+    let roots = root_find5(da, db, dc, dd, de, df);
+    let count = i32(roots[5]);
+
+    for (var i = 0; i < count; i++) {
+        let t = roots[i];
+        let dp = ((a * t + b) * t + c) * t + dmp;
+        dist = min(dist, dot2(dp));
+    }
+
+    return sqrt(dist);
+}
+
+@compute @workgroup_size(1)
+fn compute_main() {}
+"#;
+
+    let cpp_code = translate_wgsl_to_cpp(wgsl_source).expect("Failed to translate Bezier WGSL");
+
+    let bezier_name = cpp_code
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("float ") {
+                let name = rest.split('(').next()?.trim();
+                if name.starts_with("bezier") {
+                    return Some(name.to_string());
+                }
+            }
+            None
+        })
+        .expect("bezier function not found");
+
+    let harness = format!(
+        r#"{cpp}
+
+#include <iostream>
+#include <iomanip>
+
+struct TestCase {{
+    const char* name;
+    vec2<float> point;
+    vec2<float> p0;
+    vec2<float> p1;
+    vec2<float> p2;
+    vec2<float> p3;
+}};
+
+int main() {{
+    const float K = 0.5522847498307935f;
+    TestCase cases[] = {{
+        {{"horizontal", vec2<float>(0.0f, 0.5f), vec2<float>(-1.0f, 0.0f), vec2<float>(-0.33333334f, 0.0f), vec2<float>(0.33333334f, 0.0f), vec2<float>(1.0f, 0.0f)}},
+        {{"vertical", vec2<float>(0.5f, 0.0f), vec2<float>(0.0f, -1.0f), vec2<float>(0.0f, -0.33333334f), vec2<float>(0.0f, 0.33333334f), vec2<float>(0.0f, 1.0f)}},
+        {{"diagonal", vec2<float>(0.0f, 1.0f), vec2<float>(-1.0f, -1.0f), vec2<float>(-0.33333334f, -0.33333334f), vec2<float>(0.33333334f, 0.33333334f), vec2<float>(1.0f, 1.0f)}},
+        {{"circle_quarter", vec2<float>(0.0f, 0.0f), vec2<float>(1.0f, 0.0f), vec2<float>(1.0f, K), vec2<float>(K, 1.0f), vec2<float>(0.0f, 1.0f)}}
+    }};
+
+    for (const auto& tc : cases) {{
+        float d = {func}(tc.point, tc.p0, tc.p1, tc.p2, tc.p3);
+        std::cout << tc.name << " " << std::setprecision(10) << d << std::endl;
+    }}
+    return 0;
+}}
+"#,
+        cpp = cpp_code,
+        func = bezier_name
+    );
+
+    let temp_dir = std::env::temp_dir();
+    let binary_path = temp_dir.join(format!("test_bezier_distance_{}", unique_test_id()));
+    let runtime_header = get_runtime_header_path();
+
+    compile_cpp(&harness, &binary_path, &runtime_header)
+        .expect("Failed to compile bezier distance test C++");
+
+    let output = Command::new(&binary_path)
+        .output()
+        .expect("Failed to execute bezier distance binary");
+
+    assert!(
+        output.status.success(),
+        "bezier distance binary failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut results = std::collections::HashMap::new();
+    for line in stdout.lines() {
+        let mut parts = line.split_whitespace();
+        if let (Some(name), Some(value_str)) = (parts.next(), parts.next()) {
+            if let Ok(value) = value_str.parse::<f32>() {
+                results.insert(name.to_string(), value);
+            }
+        }
+    }
+
+    let reference = [
+        ("horizontal", 0.5_f32, 0.005_f32),
+        ("vertical", 0.5_f32, 0.005_f32),
+        ("diagonal", (1.0_f32 / std::f32::consts::SQRT_2), 0.01_f32),
+        ("circle_quarter", 1.0_f32, 0.05_f32),
+    ];
+
+    for (name, expected, tolerance) in reference {
+        let actual = results
+            .get(name)
+            .unwrap_or_else(|| panic!("Missing result for {}", name));
+        let error = (actual - expected).abs();
+        assert!(
+            error <= tolerance,
+            "{}: expected {}, got {} (error {})",
+            name,
+            expected,
+            actual,
+            error
+        );
+    }
+
+    if !is_debug_mode() {
+        let _ = fs::remove_file(&binary_path);
+    }
+}
+
+#[test]
 fn test_linear_equation_solver() {
     // Skip if clang++ not available
     if !is_clang_available() {
