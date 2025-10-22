@@ -807,6 +807,7 @@ fn test_bezier_shader_execution() {
         r#"{cpp}
 
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 
 int main() {{
@@ -839,6 +840,10 @@ int main() {{
         return 4;
     }}
 
+    // Output the color values for verification
+    std::cout << std::setprecision(6) << std::fixed
+              << color.x << " " << color.y << " " << color.z << " " << color.w << std::endl;
+
     return 0;
 }}
 "#,
@@ -863,6 +868,43 @@ int main() {{
         "bezier shader execution binary failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Binary stdout: '{}'", stdout);
+    }
+
+    let color_values: Vec<f32> = stdout
+        .trim()
+        .split_whitespace()
+        .map(|s| s.parse::<f32>().expect("Failed to parse color value"))
+        .collect();
+
+    assert_eq!(
+        color_values.len(),
+        4,
+        "Expected 4 color values, got {}. stdout: '{}'",
+        color_values.len(),
+        stdout
+    );
+
+    // Reference values from the correct implementation (WGSL with gamma 1.0/2.2)
+    // These were captured from a known-good run of the shader
+    let expected = [1.000000, 0.729740, 0.000000, 1.000000];
+    let tolerance = 0.01;
+
+    for i in 0..4 {
+        let diff = (color_values[i] - expected[i]).abs();
+        assert!(
+            diff < tolerance,
+            "Color component {} mismatch: expected {}, got {} (diff: {})",
+            i,
+            expected[i],
+            color_values[i],
+            diff
+        );
+    }
 
     if !is_debug_mode() {
         let _ = fs::remove_file(&binary_path);
