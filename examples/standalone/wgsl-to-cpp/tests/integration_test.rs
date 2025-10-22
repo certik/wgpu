@@ -8,6 +8,11 @@ use wgsl_to_cpp::{compile_cpp, translate_wgsl_to_cpp};
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
+/// Check if debug mode is enabled
+fn is_debug_mode() -> bool {
+    std::env::var("WGSL_TO_CPP_DEBUG").is_ok()
+}
+
 /// Generate a unique ID for test binaries
 fn unique_test_id() -> String {
     let counter = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -120,6 +125,10 @@ fn compute_shader() {
         .expect("Failed to compile C++");
 
     // Run the compiled binary
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Running binary: {}", binary_path.display());
+    }
+
     let output = Command::new(&binary_path)
         .output()
         .expect("Failed to execute binary");
@@ -132,8 +141,10 @@ fn compute_shader() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Cleanup
-    fs::remove_file(&binary_path).ok();
+    // Cleanup (skip in debug mode)
+    if !is_debug_mode() {
+        fs::remove_file(&binary_path).ok();
+    }
 }
 
 #[test]
@@ -170,6 +181,10 @@ fn process() {
         .expect("Failed to compile C++");
 
     // Run and capture output
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Running binary: {}", binary_path.display());
+    }
+
     let output = Command::new(&binary_path)
         .output()
         .expect("Failed to execute binary");
@@ -183,11 +198,16 @@ fn process() {
 
     // Verify output
     let stdout = String::from_utf8_lossy(&output.stdout);
+    if is_debug_mode() {
+        eprintln!("[DEBUG] Binary output:\n{}", stdout);
+    }
     assert!(stdout.contains("Starting shader..."));
     assert!(stdout.contains("Shader completed!"));
 
-    // Cleanup
-    fs::remove_file(&binary_path).ok();
+    // Cleanup (skip in debug mode)
+    if !is_debug_mode() {
+        fs::remove_file(&binary_path).ok();
+    }
 }
 
 #[test]
@@ -218,6 +238,10 @@ fn test_compile_multiple_shaders() {
         compile_cpp(&full_cpp, &binary_path, &runtime_header)
             .unwrap_or_else(|e| panic!("Shader {} failed to compile: {}", i, e));
 
+        if is_debug_mode() {
+            eprintln!("[DEBUG] Running binary {}: {}", i, binary_path.display());
+        }
+
         let output = Command::new(&binary_path)
             .output()
             .unwrap_or_else(|e| panic!("Shader {} failed to execute: {}", i, e));
@@ -228,6 +252,9 @@ fn test_compile_multiple_shaders() {
             i
         );
 
-        fs::remove_file(&binary_path).ok();
+        // Cleanup (skip in debug mode)
+        if !is_debug_mode() {
+            fs::remove_file(&binary_path).ok();
+        }
     }
 }

@@ -58,6 +58,8 @@ pub fn compile_cpp(
     output_path: &Path,
     runtime_header_path: &Path,
 ) -> anyhow::Result<()> {
+    let debug_mode = std::env::var("WGSL_TO_CPP_DEBUG").is_ok();
+
     // Write C++ to a temporary file with unique name based on the output path
     let temp_dir = std::env::temp_dir();
     let cpp_filename = format!(
@@ -70,24 +72,42 @@ pub fn compile_cpp(
     let cpp_file = temp_dir.join(cpp_filename);
     std::fs::write(&cpp_file, cpp_source)?;
 
+    if debug_mode {
+        eprintln!("[DEBUG] C++ source written to: {}", cpp_file.display());
+    }
+
     // Get the directory containing the runtime header
     let runtime_dir = runtime_header_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Invalid runtime header path"))?;
 
+    // Build the command arguments
+    let args = vec![
+        "-std=c++17",
+        "-I",
+        runtime_dir.to_str().unwrap(),
+        "-o",
+        output_path.to_str().unwrap(),
+        cpp_file.to_str().unwrap(),
+    ];
+
+    if debug_mode {
+        eprintln!("[DEBUG] Compiling with: clang++ {}", args.join(" "));
+    }
+
     // Compile with clang++
     let output = Command::new("clang++")
-        .arg("-std=c++17")
-        .arg("-I")
-        .arg(runtime_dir)
-        .arg("-o")
-        .arg(output_path)
-        .arg(&cpp_file)
+        .args(&args)
         .output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow::anyhow!("Compilation failed:\n{}", stderr));
+    }
+
+    if debug_mode {
+        eprintln!("[DEBUG] Binary compiled to: {}", output_path.display());
+        eprintln!("[DEBUG] To keep debugging, C++ source preserved at: {}", cpp_file.display());
     }
 
     Ok(())

@@ -103,6 +103,33 @@ The C++ runtime (`wgsl_runtime.hpp`) provides:
 cargo test -p wgsl-to-cpp
 ```
 
+### Debug Mode
+
+To see the exact clang++ commands and generated files during testing:
+
+```bash
+WGSL_TO_CPP_DEBUG=1 cargo test -p wgsl-to-cpp -- --nocapture
+```
+
+This will print:
+- Path to generated C++ source files
+- Full clang++ compilation commands
+- Paths to compiled binaries
+- Binary execution commands
+
+In debug mode, temporary files are preserved so you can manually inspect and re-run them:
+
+```bash
+# View generated C++ code
+cat /tmp/shader_test_*.cpp
+
+# Manually re-compile
+clang++ -std=c++17 -I examples/standalone/wgsl-to-cpp/src /tmp/shader_test_*.cpp -o /tmp/my_shader
+
+# Run the binary
+/tmp/my_shader
+```
+
 ## Building
 
 ```bash
