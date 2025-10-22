@@ -829,7 +829,8 @@ int main() {{
     if (!check_vertex(v1, 3.0f, -1.0f)) return 2;
     if (!check_vertex(v2, -1.0f, 3.0f)) return 3;
 
-    vec4<float> pos = vec4<float>(1.0f, 1.0f, 0.0f, 1.0f);
+    // Test fs_main at a position where distance field is visible through overlay
+    vec4<float> pos = vec4<float>(0.3f, 0.6f, 0.0f, 1.0f);
     vec4<float> color = {fs}(pos);
 
     auto finite_in_01 = [](float value) -> bool {{
@@ -840,7 +841,7 @@ int main() {{
         return 4;
     }}
 
-    // Output the color values for verification
+    // Output color values for verification
     std::cout << std::setprecision(6) << std::fixed
               << color.x << " " << color.y << " " << color.z << " " << color.w << std::endl;
 
@@ -884,14 +885,16 @@ int main() {{
     assert_eq!(
         color_values.len(),
         4,
-        "Expected 4 color values, got {}. stdout: '{}'",
+        "Expected 4 color values (color RGBA), got {}. stdout: '{}'",
         color_values.len(),
         stdout
     );
 
-    // Reference values from the correct implementation (WGSL with gamma 1.0/2.2)
-    // These were captured from a known-good run of the shader
-    let expected = [1.000000, 0.729740, 0.000000, 1.000000];
+    // Reference values from the correct implementation
+    // color: fs_main at pos (0.3, 0.6) - shows distance field color, catches d+1 bug
+    let expected = [
+        0.000000, 0.347413, 0.526900, 1.000000,  // color
+    ];
     let tolerance = 0.01;
 
     for i in 0..4 {

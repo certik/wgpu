@@ -924,14 +924,15 @@ impl<'a, W: Write> Writer<'a, W> {
                         write!(self.out, ")")?;
                     }
                     Mf::SmoothStep => {
-                        let edge0 = arg1.expect("smoothstep missing edge0");
-                        let edge1 = arg2.expect("smoothstep missing edge1");
+                        let edge0 = arg;
+                        let edge1 = arg1.expect("smoothstep missing edge1");
+                        let x = arg2.expect("smoothstep missing x");
                         write!(self.out, "smoothstep(")?;
                         self.write_expression_arena(edge0, arena, func_info)?;
                         write!(self.out, ", ")?;
                         self.write_expression_arena(edge1, arena, func_info)?;
                         write!(self.out, ", ")?;
-                        self.write_expression_arena(arg, arena, func_info)?;
+                        self.write_expression_arena(x, arena, func_info)?;
                         write!(self.out, ")")?;
                     }
                     Mf::Sqrt => {
