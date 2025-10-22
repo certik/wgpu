@@ -1,0 +1,19 @@
+[package]
+name = "wgsl-to-hlsl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+[lib]
+name = "wgsl_to_hlsl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wgsl-to-hlsl"
+path = "src/main.rs"
+
+[dependencies]
+naga = { workspace = true, features = ["wgsl-in", "hlsl-out"] }
+argh = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
