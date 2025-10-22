@@ -1,4 +1,4 @@
-use crate::{Scalar, ScalarKind, TypeInner, VectorSize};
+use crate::{Scalar, ScalarKind, VectorSize};
 
 /// Helper to convert WGSL scalar types to C++ types
 pub fn scalar_to_cpp_type(scalar: Scalar) -> &'static str {
@@ -67,24 +67,5 @@ pub fn unary_op_to_cpp(op: crate::UnaryOperator) -> &'static str {
         Uo::Negate => "-",
         Uo::LogicalNot => "!",
         Uo::BitwiseNot => "~",
-    }
-}
-
-/// Check if a type needs to be passed by reference
-pub fn should_pass_by_reference(inner: &TypeInner) -> bool {
-    match *inner {
-        TypeInner::Scalar { .. } => false,
-        TypeInner::Vector { .. } => false, // Small vectors can be passed by value
-        TypeInner::Matrix { .. } => true,  // Matrices should be passed by reference
-        TypeInner::Atomic { .. } => false,
-        TypeInner::Pointer { .. } => false,
-        TypeInner::ValuePointer { .. } => false,
-        TypeInner::Array { .. } => true,
-        TypeInner::Struct { .. } => true,
-        TypeInner::Image { .. } => true,
-        TypeInner::Sampler { .. } => true,
-        TypeInner::AccelerationStructure { .. } => true,
-        TypeInner::RayQuery { .. } => true,
-        TypeInner::BindingArray { .. } => true,
     }
 }
