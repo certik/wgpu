@@ -5079,6 +5079,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wgsl-to-cpp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argh",
+ "naga",
+]
+
+[[package]]
 name = "wgsl-to-hlsl"
 version = "0.1.0"
 dependencies = [
