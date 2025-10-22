@@ -1,5 +1,6 @@
 fn main() {
     cfg_aliases::cfg_aliases! {
+        cpp_out: { feature = "cpp-out" },
         dot_out: { feature = "dot-out" },
         glsl_out: { feature = "glsl-out" },
         hlsl_out: { any(feature = "hlsl-out", all(target_os = "windows", feature = "hlsl-out-if-target-windows")) },

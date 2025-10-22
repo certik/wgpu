@@ -2,7 +2,7 @@
 Backend functions that export shader [`Module`](super::Module)s into binary and text formats.
 */
 #![cfg_attr(
-    not(any(dot_out, glsl_out, hlsl_out, msl_out, spv_out, wgsl_out)),
+    not(any(dot_out, glsl_out, hlsl_out, msl_out, spv_out, wgsl_out, cpp_out)),
     allow(
         dead_code,
         reason = "shared helpers can be dead if none of the enabled backends need it"
@@ -11,6 +11,8 @@ Backend functions that export shader [`Module`](super::Module)s into binary and 
 
 use alloc::string::String;
 
+#[cfg(cpp_out)]
+pub mod cpp;
 #[cfg(dot_out)]
 pub mod dot;
 #[cfg(glsl_out)]

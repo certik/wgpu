@@ -72,6 +72,9 @@ hlsl-out = []
 ## If you want to enable HLSL output it regardless of the target platform, use `naga/hlsl-out`.
 hlsl-out-if-target-windows = []
 
+## Enables outputting to C++.
+cpp-out = []
+
 ## Enables colored output through codespan-reporting and termcolor.
 termcolor = ["codespan-reporting/termcolor"]
 
